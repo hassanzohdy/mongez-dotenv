@@ -22,12 +22,6 @@ import { loadEnv } from '@mongez/dotenv';
 loadEnv();
 ```
 
-Or you can directly import the `load` file and use it.
-
-```ts
-import '@mongez/dotenv/load';
-```
-
 By default it will load `.env` file from the root of your project, but you can pass a path to the file as an argument.
 
 ```ts

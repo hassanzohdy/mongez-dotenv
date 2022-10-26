@@ -1,3 +1,0 @@
-import { loadEnv } from ".";
-
-loadEnv();

@@ -22,7 +22,7 @@ function parseValue(value: any): any {
   if (value.includes("${")) {
     value = value.replace(
       /\$\{([^{]+)\}/g,
-      (_match: string, key: string) => envData[key],
+      (_match: string, key: string) => envData[key]
     );
   }
 
@@ -44,10 +44,19 @@ function parseValue(value: any): any {
   return value;
 }
 
+export type EnvLoaderOptions = {
+  override?: boolean;
+};
+
 /**
  * Load data from file and set the env data from that file
  */
-export function loadEnv(envPath?: string | undefined): void {
+export function loadEnv(
+  envPath?: string | undefined,
+  options: EnvLoaderOptions = {
+    override: false,
+  }
+): void {
   if (!envPath) {
     const rootPath = cwd();
 
@@ -69,8 +78,10 @@ export function loadEnv(envPath?: string | undefined): void {
     parseLine(line);
   }
 
-  for (const key in envData) {
-    process.env[key] = envData[key];
+  if (options.override) {
+    for (const key in envData) {
+      process.env[key] = envData[key];
+    }
   }
 }
 
