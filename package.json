@@ -1,0 +1,21 @@
+{
+  "name": "@mongez/dotenv",
+  "description": "Simple Dot Env Parser.",
+  "main": "src/index.ts",
+  "version": "1.0.0",
+  "dependencies": {
+    "@mongez/fs": "^1.1.x",
+    "@mongez/reinforcements": "^2.x.x",
+    "@mongez/supportive-is": "^1.x.x"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hassanzohdy/mongez-dotenv"
+  },
+  "keywords": [
+    "dotenv",
+    "env",
+    "environment",
+    "parser"
+  ]
+}
