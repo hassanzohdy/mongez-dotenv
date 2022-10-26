@@ -49,7 +49,9 @@ APP_NAME=My App
 APP_URL=https://myapp.com
 ```
 
-You can use them in your code like this:
+## Getting Environment Variables Values
+
+Once the `.env` file is loaded, you can access the environment variables values using `process.env` object directly or you can use `env` function.
 
 ```ts
 import { env } from '@mongez/dotenv';
@@ -57,6 +59,14 @@ import { env } from '@mongez/dotenv';
 console.log(env('APP_NAME')); // My App
 
 console.log(env('APP_URL')); // https://myapp.com
+```
+
+You can pass a default value as a second argument, in case the variable is not defined.
+
+```ts
+console.log(env('APP_NAME', 'My App')); // My App
+
+console.log(env('DEBUG', false)); // false
 ```
 
 ## Dynamic Environment Variables

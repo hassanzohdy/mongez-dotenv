@@ -72,8 +72,6 @@ export function loadEnv(envPath?: string | undefined): void {
   for (const key in envData) {
     process.env[key] = envData[key];
   }
-
-  console.log(envData);
 }
 
 export function env(key: string, defaultValue: any = null): any {
