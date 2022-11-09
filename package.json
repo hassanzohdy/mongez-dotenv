@@ -2,7 +2,7 @@
     "name": "@mongez/dotenv",
     "description": "Simple Dot Env Parser.",
     "main": "src/index.ts",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "dependencies": {
         "@mongez/fs": "^1.x.x",
         "@mongez/reinforcements": "^2.x.x",

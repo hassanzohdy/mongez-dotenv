@@ -88,3 +88,5 @@ export function loadEnv(
 export function env(key: string, defaultValue: any = null): any {
   return get(envData, key, defaultValue);
 }
+
+env.all = () => envData;

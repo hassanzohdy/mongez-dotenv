@@ -123,3 +123,13 @@ You can add comments to your `.env` file, for example by adding # at the beginni
 # This is a comment
 APP_NAME=My App
 ```
+
+## Get All Environment Variables
+
+You can get all environment variables using `env.all()` function.
+
+```ts
+import { env } from '@mongez/dotenv';
+
+console.log(env.all());
+```
