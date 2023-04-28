@@ -1,22 +1,37 @@
-import { exists, getFile } from "@mongez/fs";
-import { get, trim } from "@mongez/reinforcements";
-import Is from "@mongez/supportive-is";
 import { cwd } from "process";
+import { existsSync, readFileSync } from "fs";
 
 let envData: any = {};
 
-function parseLine(line: string): void {
+/**
+ * Check if the given value is a number
+ * If it is a string but contains only number, it should return true
+ */
+function isNumeric(value: any) {
+  return !isNaN(value);
+}
+
+/**
+ * Clear env data
+ */
+export function clearEnv() {
+  envData = {};
+}
+
+export function parseLine(line: string) {
   line = line.trim();
-  if (!line || line.startsWith("#") || !line.includes("=")) return;
+  if (!line || line.startsWith("#") || !line.includes("=")) return [];
 
   const [key, value] = line.split("=") as any;
 
-  envData[key] = parseValue(value);
+  return [key, parseValue(value)];
 }
 
-function parseValue(value: any): any {
+function parseValue(value: any) {
+  if (!value) return value;
+
   // trim any double quotes
-  value = trim(value, '"');
+  value = String(value).trim();
 
   // Converting Env variables to values
   if (value.includes("${")) {
@@ -28,10 +43,9 @@ function parseValue(value: any): any {
 
   if (value.includes("#")) {
     const [val] = value.split("#");
-    value = trim(val);
+    value = val.trim();
   }
-
-  if (Is.numeric(value)) {
+  if (isNumeric(value)) {
     value = Number(value);
   } else if (value === "null") {
     value = null;
@@ -46,47 +60,63 @@ function parseValue(value: any): any {
 
 export type EnvLoaderOptions = {
   override?: boolean;
+  dir?: string;
+  loadSharedEnv?: boolean;
+};
+
+const defaultOptions = {
+  override: true,
+  dir: cwd(),
+  loadSharedEnv: true,
 };
 
 /**
  * Load data from file and set the env data from that file
  */
-export function loadEnv(
-  envPath?: string | undefined,
-  options: EnvLoaderOptions = {
-    override: false,
-  }
-): void {
-  if (!envPath) {
-    const rootPath = cwd();
+export function loadEnv(envPath?: string, envOptions?: EnvLoaderOptions) {
+  const options = { ...defaultOptions, ...(envOptions || {}) };
 
-    if (exists(rootPath + `/.env.${process.env.NODE_ENV}`)) {
-      envPath = rootPath + `/.env.${process.env.NODE_ENV}`;
+  if (!envPath) {
+    const rootPath = options.dir || cwd();
+
+    const currentEnvPath = rootPath + `/.env.${process.env.NODE_ENV}`;
+
+    if (existsSync(currentEnvPath)) {
+      envPath = currentEnvPath;
     } else {
       envPath = rootPath + "/.env";
     }
   }
 
-  if (!exists(envPath)) {
+  loadEnvFile(envPath, options.override);
+
+  if (options.loadSharedEnv && existsSync(options.dir + "/.env.shared")) {
+    loadEnvFile(options.dir + "/.env.shared", options.override);
+  }
+}
+
+export function loadEnvFile(envPath: string, override: boolean) {
+  if (!existsSync(envPath)) {
     throw new Error(`.env file not found at ${envPath}`);
   }
 
-  const lines: string[] = getFile(envPath).split(/\n|\r\n/);
+  const lines: string[] = readFileSync(envPath, "utf-8").split(/\n|\r\n/);
   envData = [];
 
   for (const line of lines) {
-    parseLine(line);
-  }
+    const [key, value] = parseLine(line);
 
-  if (options.override) {
-    for (const key in envData) {
+    if (!key) continue;
+
+    envData[key] = parseValue(value);
+    if (override) {
       process.env[key] = envData[key];
     }
   }
 }
 
-export function env(key: string, defaultValue: any = null): any {
-  return get(envData, key, defaultValue);
+export function env(key: string, defaultValue?: any): any {
+  return envData[key] ?? defaultValue;
 }
 
 env.all = () => envData;
