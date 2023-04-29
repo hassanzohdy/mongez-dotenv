@@ -30,10 +30,13 @@ export function parseLine(line: string) {
 function parseValue(value: any) {
   if (!value) return value;
 
+  console.log(value);
+
   // trim any double quotes but keep the one with backslash escape
   value = String(value)
     .replace(/(?<!\\)"/g, "")
     .trim(); // i.e: "value" => value, "value\" => value\"
+  console.log(value);
 
   // Converting Env variables to values
   if (value.includes("${")) {
