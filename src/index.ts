@@ -31,7 +31,7 @@ function parseValue(value: any) {
   if (!value) return value;
 
   // trim any double quotes
-  value = String(value).trim();
+  value = String(value).replaceAll('"', "").trim();
 
   // Converting Env variables to values
   if (value.includes("${")) {
