@@ -18,7 +18,7 @@ export function clearEnv() {
   envData = {};
 }
 
-export function parseLine(line: string) {
+export function parseLine(line: string): [string, any] | [] {
   line = line.trim();
   if (!line || line.startsWith("#") || !line.includes("=")) return [];
 
@@ -27,16 +27,19 @@ export function parseLine(line: string) {
   return [key, parseValue(value)];
 }
 
-function parseValue(value: any) {
+export function parseValue(value: any) {
   if (!value) return value;
 
-  console.log(value);
+  value = String(value).trim();
 
   // trim any double quotes but keep the one with backslash escape
-  value = String(value)
-    .replace(/(?<!\\)"/g, "")
-    .trim(); // i.e: "value" => value, "value\" => value\"
-  console.log(value);
+  if (value.startsWith('"') && value.endsWith('"')) {
+    // Remove the first and last characters (i.e. the quotes)
+    value = value.slice(1, -1);
+
+    // Replace any escaped double quotes with a single double quote
+    value = value.replace(/\\"/g, '"');
+  }
 
   // Converting Env variables to values
   if (value.includes("${")) {
