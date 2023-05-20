@@ -71,5 +71,6 @@ describe("@mongez/dotenv.loadEnv", () => {
     });
 
     expect(process.env.APP_URL).toBe("http://localhost:3000");
+    expect(process.env.DB_PASS).toBe("AMFSDF#QWEWQE");
   });
 });

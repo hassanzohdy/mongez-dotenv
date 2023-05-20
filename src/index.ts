@@ -32,15 +32,6 @@ export function parseValue(value: any) {
 
   value = String(value).trim();
 
-  // trim any double quotes but keep the one with backslash escape
-  if (value.startsWith('"') && value.endsWith('"')) {
-    // Remove the first and last characters (i.e. the quotes)
-    value = value.slice(1, -1);
-
-    // Replace any escaped double quotes with a single double quote
-    value = value.replace(/\\"/g, '"');
-  }
-
   // Converting Env variables to values
   if (value.includes("${")) {
     value = value.replace(
@@ -49,10 +40,32 @@ export function parseValue(value: any) {
     );
   }
 
-  if (value.includes("#")) {
+  // trim any double quotes but keep the one with backslash escape
+  if (value.startsWith('"') && value.endsWith('"')) {
+    value = value.slice(1, -1);
+    // Replace any escaped double quotes with a single double quote
+    value = value.replace(/\\"/g, '"');
+
+    return value;
+  }
+  // now check if it starts with double quotes but doesn't end with it
+  // this means the value contains a double quote
+  // but also it may has a comment at the end
+  // so we need to remove the comment first
+  // after the last double quote
+  if (value.startsWith('"') && value.includes("#")) {
     const [val] = value.split("#");
     value = val.trim();
+
+    // now we need to remove the first and last double quote
+    value = value.slice(1, -1);
+    // Replace any escaped double quotes with a single double quote
+    value = value.replace(/\\"/g, '"');
+
+    return value;
   }
+
+
   if (isNumeric(value)) {
     value = Number(value);
   } else if (value === "null") {

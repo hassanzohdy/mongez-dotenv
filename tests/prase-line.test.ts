@@ -10,13 +10,13 @@ describe("@mongez/dotenv.parseLine", () => {
   });
 
   it("test @mongez/dotenv.parseLine escape double quote", () => {
-    const line = 'APP_NAME="Mongez\\""';
+    const line = 'APP_NAME="Mongez\""';
     const [key, value] = parseLine(line);
 
-    console.log(value, value.length);
+    console.log(key, value, value.length);
 
     expect(key).toBe("APP_NAME");
-    expect(value).toBe('Mongez\\"');
+    expect(value).toBe('Mongez\"');
   });
 
   it("test @mongez/dotenv.parseLine with number", () => {

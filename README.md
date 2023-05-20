@@ -168,7 +168,7 @@ loadEnv("/path/to/.env", { dir: "/path/to/directory" });
 
 ## Shared env
 
-Sometimes env files (i.e .env.development and env.production) contain same variables with same values, for example `APP_NAME="My App"`, in this case we'd have to write that variable in all environment files.
+Sometimes env files (i.e `.env.development` and `.env.production`) contain same variables with same values, for example `APP_NAME="My App"`, in this case we'd have to write that variable in all environment files.
 
 Luckily, we can use shared env files, for example we can create a file called `.env.shared` and add all shared variables there, and then we can load it in all environment files.
 
@@ -178,7 +178,7 @@ APP_NAME="My App"
 APP_URL="https://myapp.com"
 ```
 
-This feature is set to true by default, if you want to disable it, set in the second argument `loadSharedEnv` to false.
+This feature is set to `true` by default, if you want to disable it, set in the second argument `loadSharedEnv` to false.
 
 ```ts
 loadEnv("/path/to/.env", { loadSharedEnv: false });
