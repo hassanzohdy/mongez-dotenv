@@ -22,9 +22,9 @@ export function parseLine(line: string): [string, any] | [] {
   line = line.trim();
   if (!line || line.startsWith("#") || !line.includes("=")) return [];
 
-  const [key, value] = line.split("=") as any;
+  const [key, ...value] = line.split("=") as any;
 
-  return [key, parseValue(value)];
+  return [key, parseValue(value.join("="))];
 }
 
 export function parseValue(value: any) {
@@ -64,7 +64,6 @@ export function parseValue(value: any) {
 
     return value;
   }
-
 
   if (isNumeric(value)) {
     value = Number(value);

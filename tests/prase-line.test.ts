@@ -10,13 +10,22 @@ describe("@mongez/dotenv.parseLine", () => {
   });
 
   it("test @mongez/dotenv.parseLine escape double quote", () => {
-    const line = 'APP_NAME="Mongez\""';
+    const line = 'APP_NAME="Mongez""';
     const [key, value] = parseLine(line);
 
-    console.log(key, value, value.length);
-
     expect(key).toBe("APP_NAME");
-    expect(value).toBe('Mongez\"');
+    expect(value).toBe('Mongez"');
+  });
+
+  it("test @mongez/dotenv.parseLine escape double quote", () => {
+    const line =
+      'DB_URL="mongodb+srv://admin:admin@cluster0.zbdkfah.mongodb.net/?retryWrites=true&w=majority"';
+    const [key, value] = parseLine(line);
+
+    expect(key).toBe("DB_URL");
+    expect(value).toBe(
+      "mongodb+srv://admin:admin@cluster0.zbdkfah.mongodb.net/?retryWrites=true&w=majority"
+    );
   });
 
   it("test @mongez/dotenv.parseLine with number", () => {

@@ -2,7 +2,7 @@
     "name": "@mongez/dotenv",
     "description": "Simple Dot Env Parser.",
     "main": "src/index.ts",
-    "version": "1.1.6",
+    "version": "1.1.7",
     "scripts": {
         "test": "jest",
         "test:coverage": "jest ./src --coverage",
