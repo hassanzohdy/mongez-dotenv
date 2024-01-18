@@ -183,3 +183,13 @@ This feature is set to `true` by default, if you want to disable it, set in the 
 ```ts
 loadEnv("/path/to/.env", { loadSharedEnv: false });
 ```
+
+## Reset Environment Variables
+
+To reset environment variable to the initial value of `process.env`, you can use `resetEnv` function.
+
+```ts
+import { resetEnv } from "@mongez/dotenv";
+
+resetEnv();
+```

@@ -1,7 +1,9 @@
 import { cwd } from "process";
 import { existsSync, readFileSync } from "fs";
 
-let envData: any = {};
+const envData: Record<string, any> = {};
+
+const initialProcessEnvData = { ...process.env };
 
 /**
  * Check if the given value is a number
@@ -12,10 +14,17 @@ function isNumeric(value: any) {
 }
 
 /**
- * Clear env data
+ * Clear env data and reset it to the initial process env data
  */
-export function clearEnv() {
-  envData = {};
+export function resetEnv() {
+  for (const key in envData) {
+    delete envData[key];
+  }
+
+  for (const key in initialProcessEnvData) {
+    process.env[key] = initialProcessEnvData[key];
+    envData[key] = initialProcessEnvData[key];
+  }
 }
 
 export function parseLine(line: string): [string, any] | [] {
@@ -96,6 +105,10 @@ const defaultOptions = {
 export function loadEnv(envPath?: string, envOptions?: EnvLoaderOptions) {
   const options = { ...defaultOptions, ...(envOptions || {}) };
 
+  if (options.loadSharedEnv && existsSync(options.dir + "/.env.shared")) {
+    loadEnvFile(options.dir + "/.env.shared", options.override);
+  }
+
   if (!envPath) {
     const rootPath = options.dir || cwd();
 
@@ -109,10 +122,6 @@ export function loadEnv(envPath?: string, envOptions?: EnvLoaderOptions) {
   }
 
   loadEnvFile(envPath, options.override);
-
-  if (options.loadSharedEnv && existsSync(options.dir + "/.env.shared")) {
-    loadEnvFile(options.dir + "/.env.shared", options.override);
-  }
 }
 
 export function loadEnvFile(envPath: string, override: boolean) {
@@ -121,7 +130,6 @@ export function loadEnvFile(envPath: string, override: boolean) {
   }
 
   const lines: string[] = readFileSync(envPath, "utf-8").split(/\n|\r\n/);
-  envData = [];
 
   for (const line of lines) {
     const [key, value] = parseLine(line);
