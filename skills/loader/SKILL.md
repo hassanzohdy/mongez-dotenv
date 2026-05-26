@@ -101,7 +101,7 @@ Error: .env file not found at /abs/path/to/.env
 
 Use this when you need to load a file outside the standard resolution chain (e.g. a `secrets.env` somewhere on disk, deferred loading, multiple env files at different paths).
 
-## `resetEnv` — the limits
+## `resetEnv`
 
 ```ts
 resetEnv();
@@ -110,19 +110,10 @@ resetEnv();
 Does:
 
 1. Clears every key from the internal store.
-2. Re-assigns every key in the import-time `process.env` snapshot back to `process.env`.
+2. Deletes any `process.env` keys that `loadEnvFile` wrote since module load (tracked internally in a `Set`).
+3. Re-assigns every key in the import-time `process.env` snapshot back to `process.env`.
 
-Does NOT:
-
-1. Delete keys added to `process.env` since module load. If `loadEnv` wrote `APP_PORT` and that key wasn't in the snapshot, `resetEnv` leaves it behind. To fully clean up:
-
-```ts
-const before = Object.keys(process.env);
-loadEnv();
-resetEnv();
-const after = Object.keys(process.env);
-for (const k of after) if (!before.includes(k)) delete process.env[k];
-```
+The net effect is a true "back to t0" for anything the loader added. Keys that callers set directly on `process.env` (without going through `loadEnv` / `loadEnvFile`) are not tracked and survive the reset — the caller owns their own additions.
 
 ## Common loading patterns
 

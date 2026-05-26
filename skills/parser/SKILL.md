@@ -108,16 +108,14 @@ env("MISSING", false);            // false
 env.all();                        // { APP_NAME: "...", APP_PORT: 3000, ... }
 ```
 
-**Sharp edge:** `env(key, default)` returns `envData[key] ?? defaultValue`. The `??` collapses `null`:
+`env(key, default)` uses `key in envData` (not `??`), so a deliberately-loaded `null` is preserved and distinguishable from a missing key:
 
 ```ts
 // .env contains: EST_TIME=null
-env("EST_TIME");                  // undefined  (NOT null!)
-env("EST_TIME", "fallback");      // "fallback"
-env.all().EST_TIME;               // null       (correct value, via the store directly)
+env("EST_TIME");                  // null
+env("EST_TIME", "fallback");      // null  (loaded null wins over default)
+env.all().EST_TIME;               // null
 ```
-
-If you need to distinguish a loaded `null` from a missing key, read through `env.all()`.
 
 ## `env.all()` is the store by reference
 

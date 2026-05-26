@@ -59,9 +59,5 @@ The loader is **stateful and module-scoped**. There is one store per Node proces
 
 ## Quirks worth knowing up front
 
-1. **`env(key)` collapses `null` to `undefined`.** Internal: `envData[key] ?? defaultValue`. A deliberately-loaded `null` is indistinguishable from "missing" through `env()`. Workaround: read `env.all()[key]`.
-2. **`process.env` always stringifies.** Even though the package writes `process.env.PORT = 3000`, Node's `process.env` setter coerces to `"3000"`. Use `env()` if you want the typed value.
-3. **`${VAR}` is parse-time only.** Substitutions happen the moment the value is parsed. Later updates to the referenced key do not re-trigger substitution in earlier lines.
-4. **`resetEnv` is partial.** It restores keys present at module-import time. It does NOT delete keys that have been added to `process.env` since.
-
-All four quirks are reproduced as `.skip()`'d tests in `src/__tests__/known-bugs.test.ts`.
+1. **`process.env` always stringifies.** Even though the package writes `process.env.PORT = 3000`, Node's `process.env` setter coerces to `"3000"`. Use `env()` if you want the typed value.
+2. **`${VAR}` is parse-time only.** Substitutions happen the moment the value is parsed. Later updates to the referenced key do not re-trigger substitution in earlier lines.

@@ -120,56 +120,48 @@ env("APP_PORT");        // typed value from the file
 
 Useful when a parent process / orchestrator already set `process.env` and you want the file as a fallback rather than a replacement.
 
-## Working around the `null` collapse
+## Distinguishing a loaded `null` from a missing key
 
-`env(key)` returns `undefined` (or the default) when the loaded value is `null`. If you need to know "was this explicitly loaded as null?", go through `env.all()`:
+`env(key)` preserves a deliberately-loaded `null` (it checks `key in envData` rather than `??`), so the loaded value passes through directly:
 
 ```ts
 import { env } from "@mongez/dotenv";
 
-function getLoaded<T>(key: string): T | undefined {
-  // env.all() exposes the raw store; missing keys are `undefined`,
-  // loaded-as-null keys are `null`.
-  const all = env.all();
-  return key in all ? (all[key] as T) : undefined;
-}
-
-getLoaded("EST_TIME");   // null   (when the file had EST_TIME=null)
-getLoaded("MISSING");    // undefined
+// .env contains: EST_TIME=null
+env("EST_TIME");                 // null
+env("EST_TIME", "fallback");     // null  (loaded null wins over default)
+env("MISSING");                  // undefined
+env("MISSING", "fallback");      // "fallback"
 ```
 
-## Full reset (deletes added keys too)
+## Reset in tests
 
-`resetEnv` only restores keys from the import-time snapshot — it does not delete keys added since. Roll your own if you need true isolation (e.g. test setup):
+`resetEnv` clears the internal store, deletes any `process.env` keys that the loader wrote since module load, and re-applies the import-time snapshot — so a single call is enough to undo a `loadEnv` between tests:
 
 ```ts
+import { afterEach } from "vitest";
 import { resetEnv } from "@mongez/dotenv";
 
-const importTimeKeys = new Set(Object.keys(process.env));
-
-export function hardReset() {
-  for (const key of Object.keys(process.env)) {
-    if (!importTimeKeys.has(key)) delete process.env[key];
-  }
+afterEach(() => {
   resetEnv();
-}
+});
 ```
 
-## Quoted values and `#`
+Keys that the test sets directly on `process.env` (without going through `loadEnv` / `loadEnvFile`) are not tracked by the loader and survive the reset — manage those yourself if needed.
 
-Two rules to keep yourself out of the known parser edge case:
+## Quoted values with `#`
 
-1. If your value contains `#`, fully quote it AND do not put a trailing comment on the same line.
-2. Trailing comments are fine when the value is not quoted, or when the value is quoted and contains no `#`.
+The parser is quote-aware: when a value opens with `"`, `'`, or `` ` ``, the matching closing quote is the last occurrence of that same character, and anything after it (whitespace + a `# comment`) is discarded.
 
 ```bash
-# OK — quoted, contains #, no trailing comment
+# Fully-quoted, contains #, no trailing comment
 DB_PASS="AMFSDF#QWEWQE"
+#   → "AMFSDF#QWEWQE"
 
-# OK — unquoted, no #
-APP_NAME=My App   # trailing comment is fine for unquoted values
-
-# BROKEN today — quoted, contains #, AND trailing comment
+# Fully-quoted, contains #, with a trailing comment
 HTTP_URL2="https://${HOST}#fragment" # some comment
-#   → returns "https://example.com:300" (trims trailing char)
+#   → "https://example.com#fragment"
+
+# Unquoted, no # — trailing comment is fine
+APP_NAME=My App
 ```
