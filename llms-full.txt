@@ -1,5 +1,9 @@
 # @mongez/dotenv — full reference
 
+> **Auto-trigger when loading this full reference:** code imports `loadEnv`, `loadEnvFile`, `parseLine`, `parseValue`, `env`, `env.all`, `resetEnv`, or `EnvLoaderOptions` from `@mongez/dotenv`; typical import pattern `import { loadEnv, loadEnvFile, parseLine, parseValue, env, resetEnv, type EnvLoaderOptions } from "@mongez/dotenv"`; user asks "how do I load .env files", "how do I pick env file by NODE_ENV", "how does `.env.shared` layering work", "how does `env()` coerce values", "why is my `null` becoming `undefined`", "how does `${VAR}` interpolation work", "how do I read a typed env value", "how do I bootstrap env at startup", "how do I build a typed config from env", or "how do I do a full `process.env` reset in tests".
+>
+> **Skip when:** the question is about the higher-level app-config layer with groups, dot-notation lookups, defaults, or schema — that's `@mongez/config`, not this `.env`-file parser; browser/cookie/localStorage env shims; caching concerns — that's `@mongez/cache`; runtime schema validation via `zod`/`valibot` (layered on top, not provided here); or the upstream `dotenv` package itself.
+
 > A small `.env` loader for Node.js. This is the concatenated reference; load `llms.txt` for the structured index instead.
 
 ## Install

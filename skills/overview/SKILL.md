@@ -1,7 +1,9 @@
 ---
 name: mongez-dotenv-overview
-description: High-level mental model of @mongez/dotenv — what it does, its module-scoped state, scope boundaries, and known quirks.
-when_to_use: User asks what @mongez/dotenv is or how it works; user is evaluating whether to use this package; user wants to understand the envData store, process.env mirroring, or the null-collapse / parse-time interpolation quirks; user imports from @mongez/dotenv for the first time.
+description: |
+  High-level mental model of `@mongez/dotenv` — what it does, its module-scoped state, scope boundaries, and known quirks.
+  TRIGGER when: code imports any of `loadEnv`, `loadEnvFile`, `parseLine`, `parseValue`, `env`, `resetEnv`, or `EnvLoaderOptions` from `@mongez/dotenv` for the first time; user asks "what is @mongez/dotenv", "how does the envData store work", or "should I use @mongez/dotenv vs dotenv"; typical import pattern like `import { loadEnv, env } from "@mongez/dotenv"`.
+  SKIP: deep-dive questions on specific APIs — use `mongez-dotenv-loader` (file loading) or `mongez-dotenv-parser` (parsing/reading); end-to-end recipes — use `mongez-dotenv-recipes`; the app-config layer (groups, dot-notation, schema) is `@mongez/config`, not this package which only parses `.env` files.
 ---
 
 # Overview

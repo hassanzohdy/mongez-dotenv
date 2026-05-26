@@ -1,7 +1,9 @@
 ---
 name: mongez-dotenv-recipes
-description: Idiomatic patterns and worked examples for common @mongez/dotenv use cases — bootstrapping, layered env files, typed config objects, read-only mode, null handling, and full reset.
-when_to_use: User wants a concrete example of how to use @mongez/dotenv in a real project; user asks how to bootstrap env loading at startup, load multiple files, use per-environment config with shared defaults, integrate with zod/valibot validation, avoid touching process.env, work around the null-collapse edge case, or achieve a full process.env reset in tests.
+description: |
+  Idiomatic patterns and worked examples for common `@mongez/dotenv` use cases — bootstrapping, layered env files, typed config objects, read-only mode, `null` handling, and full reset.
+  TRIGGER when: code composes `loadEnv`, `loadEnvFile`, `env`, or `resetEnv` from `@mongez/dotenv` into a startup/bootstrap file or config object; user asks "how do I bootstrap env at startup", "how do I build a typed config from env", "how do I do a full process.env reset in tests", or "how do I work around the null collapse"; typical import pattern like `import { loadEnv, env } from "@mongez/dotenv"`.
+  SKIP: pure API reference for a single function — use `mongez-dotenv-loader` (loading) or `mongez-dotenv-parser` (parsing/reading); first-touch mental-model questions — use `mongez-dotenv-overview`; the app-config layer (groups, dot-notation, schema) is `@mongez/config`, not this `.env`-file package.
 ---
 
 # Recipes

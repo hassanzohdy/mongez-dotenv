@@ -1,7 +1,9 @@
 ---
 name: mongez-dotenv-parser
-description: API reference for parseLine, parseValue, and env — the parsing and value-reading layer of @mongez/dotenv.
-when_to_use: User calls or asks about parseLine, parseValue, or the env() function; user needs to understand value coercion rules (string-to-number, boolean, null); user asks about ${VAR} interpolation behaviour; user hits the null-collapse edge case with env(); user wants to use parseLine or parseValue standalone without loading a file.
+description: |
+  API reference for `parseLine`, `parseValue`, `env`, and `env.all` — the parsing and value-reading layer of `@mongez/dotenv`.
+  TRIGGER when: code imports `parseLine`, `parseValue`, or `env` from `@mongez/dotenv`; user asks "how does env() coerce values", "why is my null becoming undefined", "how does `${VAR}` interpolation work", or "how do I read a typed env value"; typical import pattern like `import { env, parseLine, parseValue } from "@mongez/dotenv"`.
+  SKIP: file-loading entry points `loadEnv`/`loadEnvFile`/`resetEnv` — use `mongez-dotenv-loader`; full worked-example recipes — use `mongez-dotenv-recipes`; the app-config layer (groups, dot-notation, schema) is `@mongez/config`, not this `.env`-parser package; runtime schema validation (zod/valibot is layered on top, not provided here).
 ---
 
 # Parser
