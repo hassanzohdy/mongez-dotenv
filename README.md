@@ -1,112 +1,173 @@
+<div align="center">
+
 # @mongez/dotenv
 
-> A small `.env` loader for Node.js with type coercion, `${VAR}` interpolation, environment-specific files via `NODE_ENV`, and a shared-defaults layer.
+A small `.env` loader for Node.js with type coercion, `${VAR}` interpolation, `NODE_ENV`-aware file selection, and a shared-defaults layer.
 
-`@mongez/dotenv` reads a `.env` file from disk, parses each line, coerces values to JavaScript types (number, boolean, `null`) when they look like one, and writes the result onto an internal store. From that store you can:
+[![npm](https://img.shields.io/npm/v/@mongez/dotenv.svg)](https://www.npmjs.com/package/@mongez/dotenv)
+[![license](https://img.shields.io/npm/l/@mongez/dotenv.svg)](LICENSE)
+[![bundle size](https://img.shields.io/bundlephobia/minzip/@mongez/dotenv.svg)](https://bundlephobia.com/package/@mongez/dotenv)
+[![downloads](https://img.shields.io/npm/dw/@mongez/dotenv.svg)](https://www.npmjs.com/package/@mongez/dotenv)
 
-- Read typed values back through `env("KEY")` — keep `3000` as `3000`, not `"3000"`.
-- Optionally write through to `process.env` for code that reaches for `process.env` directly.
-- Layer multiple files: a `.env.shared` of defaults, then a `.env.${NODE_ENV}` for the environment.
-- Reference earlier variables in later ones via `${VAR}`.
+</div>
 
-This package is intentionally small. It has no runtime dependencies and a single `src/index.ts` file.
+---
 
-## Install
+## Why @mongez/dotenv?
 
-```sh
-yarn add @mongez/dotenv
-# or
-npm i @mongez/dotenv
-```
-
-No peer dependencies.
-
-## A 30-second tour
-
-```ts
-// .env
-APP_NAME="My App"
-APP_PORT=3000
-APP_HOST=localhost
-APP_URL=http://${APP_HOST}:${APP_PORT}
-DEBUG=true
-```
+`dotenv` hands you string-only values and one file. `dotenv-flow` adds file layering but still leaves you parsing `"3000"` into `3000` by hand. `@mongez/dotenv` is the smallest layer that does both: it picks the right file based on `NODE_ENV`, layers a `.env.shared` of defaults underneath, parses `${VAR}` references between keys, and coerces values to real JavaScript primitives (`number`, `boolean`, `null`) so `env("APP_PORT")` returns `3000`, not `"3000"`. One source file, zero runtime dependencies.
 
 ```ts
 import { loadEnv, env } from "@mongez/dotenv";
 
-loadEnv();                       // walks NODE_ENV → fallback to .env
+loadEnv();
 
-env("APP_NAME");                 // "My App"        (string)
-env("APP_PORT");                 // 3000            (number)
-env("DEBUG");                    // true            (boolean)
-env("APP_URL");                  // "http://localhost:3000"
-env("MISSING", "default");       // "default"
-env.all();                       // { APP_NAME: ..., APP_PORT: 3000, ... }
+const port: number = env("APP_PORT", 3000);
+const debug: boolean = env("DEBUG", false);
+const dbUrl: string = env("DB_URL");
 ```
 
-## What's in the box
+---
 
-| Export | Purpose |
+## Features
+
+| Feature | Description |
 |---|---|
-| `loadEnv(envPath?, options?)` | Auto-detects the env file from `NODE_ENV` (or a fallback `.env`), loads `.env.shared` first if present, and populates the internal store. |
-| `loadEnvFile(envPath, override)` | Lower-level: loads one explicit file. Throws if the file does not exist. |
-| `parseLine(line)` | Parses a single `KEY=VALUE` line. Returns `[key, value]` or `[]`. |
-| `parseValue(value)` | Coerces one right-hand-side into its typed form. |
-| `env(key, defaultValue?)` | Reads a value out of the store. |
-| `env.all()` | Returns the full key/value record (by reference). |
-| `resetEnv()` | Clears loaded values and restores `process.env` from its initial snapshot. |
-| `EnvLoaderOptions` (type) | Options bag passed to `loadEnv`. |
+| **Typed coercion** | `"3000"` becomes `3000`, `"true"` becomes `true`, `"null"` becomes `null` — coercion is intentionally narrow and case-sensitive. |
+| **`NODE_ENV` file resolution** | Auto-picks `.env.${NODE_ENV}` when present, falls back to `.env`. |
+| **Shared defaults** | `.env.shared` loads first, environment-specific files override it. |
+| **`${VAR}` interpolation** | Reference earlier keys inside later values for composed URLs and paths. |
+| **Quoted values** | `"`, `'`, and `` ` `` all work; quotes opt out of coercion and allow `#` inside the value. |
+| **Typed reader** | `env(key, default)` returns the parsed JS type, not the stringified `process.env` form. |
+| **Read-only mode** | Opt out of writing to `process.env` with `override: false`. |
+| **Full reset** | `resetEnv()` clears loaded values and removes process.env keys the loader wrote since import. |
+| **Zero dependencies** | No runtime or peer deps. One file, Node-only. |
 
-## File resolution
+---
 
-```ts
-loadEnv();                                 // pick a file automatically
-loadEnv("/abs/path/to/.env");              // explicit
-loadEnv(undefined, { dir: __dirname });    // override the search root
+## Installation
+
+```sh
+npm install @mongez/dotenv
 ```
 
-With no `envPath`, the resolver walks this fallback chain:
-
-1. If `loadSharedEnv` is `true` (default), it loads `${dir}/.env.shared` first when present.
-2. It then tries `${dir}/.env.${process.env.NODE_ENV}` (e.g. `.env.production`).
-3. If that file does not exist, it falls back to `${dir}/.env`.
-
-`dir` defaults to `process.cwd()`. `loadSharedEnv` and `override` default to `true`.
-
-## `EnvLoaderOptions`
-
-```ts
-type EnvLoaderOptions = {
-  override?: boolean;       // default true — also write into process.env
-  dir?: string;             // default cwd() — search root for .env files
-  loadSharedEnv?: boolean;  // default true — load .env.shared first
-};
+```sh
+yarn add @mongez/dotenv
 ```
 
-## Type coercion
+```sh
+pnpm add @mongez/dotenv
+```
 
-`parseValue` is intentionally narrow about which strings it converts:
+---
 
-| Input | Output | Type |
+## Quick start
+
+Create a `.env` file at your project root:
+
+```bash
+APP_NAME="My App"
+APP_HOST=localhost
+APP_PORT=3000
+APP_URL=http://${APP_HOST}:${APP_PORT}
+DEBUG=true
+DB_PASS="P@ss#word"
+```
+
+Boot it at process start and read typed values:
+
+```ts
+import { loadEnv, env } from "@mongez/dotenv";
+
+loadEnv();
+
+env("APP_NAME");           // "My App"                (string)
+env("APP_PORT");           // 3000                    (number)
+env("DEBUG");              // true                    (boolean)
+env("APP_URL");            // "http://localhost:3000" (interpolated)
+env("DB_PASS");            // "P@ss#word"             (# preserved inside quotes)
+env("MISSING", "default"); // "default"
+env.all();                 // { APP_NAME: "My App", APP_PORT: 3000, ... }
+```
+
+That's the entire happy path. Everything below is depth on the same eight exports.
+
+---
+
+## Loading .env files
+
+`loadEnv(envPath?, options?)` is the entry point you call once at startup. With no arguments it resolves a file automatically:
+
+1. If `loadSharedEnv` is `true` (default) and `${dir}/.env.shared` exists, load it first.
+2. Try `${dir}/.env.${process.env.NODE_ENV}` (e.g. `.env.production`).
+3. If that file does not exist, fall back to `${dir}/.env`.
+
+```ts
+import { loadEnv } from "@mongez/dotenv";
+
+loadEnv();                                  // auto-resolve from cwd()
+loadEnv("/etc/myapp/secrets.env");          // explicit path
+loadEnv(undefined, { dir: __dirname });     // override the search root
+loadEnv(undefined, { override: false });    // populate the store but skip process.env
+loadEnv(undefined, { loadSharedEnv: false });
+```
+
+### `EnvLoaderOptions`
+
+| Option | Default | Effect |
 |---|---|---|
-| `"3000"` | `3000` | `number` |
-| `"3.14"` | `3.14` | `number` |
-| `"true"` | `true` | `boolean` |
-| `"false"` | `false` | `boolean` |
-| `"null"` | `null` | object |
-| `'"3000"'` (quoted) | `"3000"` | `string` (quotes opt out of coercion) |
-| `"My App"` | `"My App"` | `string` |
-| `'"He said \\"hi\\""'` | `He said "hi"` | `string` (`\"` is unescaped) |
+| `override` | `true` | Mirror parsed values into `process.env`. Set to `false` to keep `process.env` untouched. |
+| `dir` | `process.cwd()` | Directory the resolver searches for `.env.shared`, `.env.${NODE_ENV}`, and `.env`. |
+| `loadSharedEnv` | `true` | Whether to load `.env.shared` before the environment-specific file. |
 
-`true` and `false` are case-sensitive. Strings like `True`, `YES`, or `1` are not coerced to booleans.
+### `loadEnvFile(envPath, override)` — load one explicit file
 
-## Variable interpolation
-
-A value containing `${VAR}` substitutes another key previously loaded into the same store:
+Use this when you need to load a file outside the standard resolution chain — multiple env files at different paths, host-specific overrides on disk, or deferred loading. Throws `Error: .env file not found at <path>` when the file is missing.
 
 ```ts
-// .env
+import { loadEnvFile } from "@mongez/dotenv";
+
+loadEnvFile("/etc/myapp/base.env",  true);   // load + write to process.env
+loadEnvFile("/etc/myapp/local.env", true);   // overrides keys from base
+```
+
+### `resetEnv()` — true revert to import time
+
+Clears the internal store, deletes every `process.env` key that `loadEnv` / `loadEnvFile` wrote since module load, and restores the import-time `process.env` snapshot. Keys you set directly on `process.env` outside this loader are not tracked and survive reset.
+
+```ts
+import { resetEnv } from "@mongez/dotenv";
+
+// Useful in test setup:
+afterEach(() => {
+  resetEnv();
+});
+```
+
+---
+
+## Parsing values
+
+`parseValue` is intentionally narrow about which strings it converts. Coercion is case-sensitive — `"True"` stays a string.
+
+| Input | Output | Note |
+|---|---|---|
+| `"3000"` | `3000` | Anything where `!isNaN(x)` is true becomes a number. |
+| `"3.14"` | `3.14` | Decimals supported. |
+| `"-7"` | `-7` | Negatives supported. |
+| `"true"` | `true` | Lowercase only — `"True"` stays a string. |
+| `"false"` | `false` | Lowercase only. |
+| `"null"` | `null` | Lowercase only. |
+| `"My App"` | `"My App"` | Plain text passes through. |
+| `'"3000"'` | `"3000"` | Wrapping quotes opt OUT of coercion. |
+| `'"a \\"b\\" c"'` | `'a "b" c'` | `\"` inside quotes is unescaped. |
+| `""` | `""` | Empty value passes through. |
+
+### `${VAR}` interpolation
+
+A value containing `${VAR}` substitutes another key from the internal store at parse time. The referenced key must appear earlier in the same file — or in `.env.shared`, which loads first.
+
+```bash
 APP_HOST=localhost
 APP_PORT=3000
 APP_URL=http://${APP_HOST}:${APP_PORT}
@@ -116,110 +177,179 @@ APP_URL=http://${APP_HOST}:${APP_PORT}
 env("APP_URL"); // "http://localhost:3000"
 ```
 
-Substitution reads from `@mongez/dotenv`'s internal store, not `process.env`. Order in the file matters — a `${VAR}` reference resolves at parse time, so the referenced key must appear earlier in the file (or in `.env.shared`, which is loaded first).
+Substitutions read from `@mongez/dotenv`'s internal store, not from `process.env`. Unresolved references substitute the literal string `"undefined"`.
 
-## Shared defaults
+### Standalone `parseLine` / `parseValue`
 
-`.env.shared` is loaded before the environment-specific file. Keys in the environment file overwrite keys from `.env.shared` when `override` is `true`.
-
-```bash
-# .env.shared
-APP_NAME="My App"
-APP_URL="https://example.com"
-
-# .env.production
-APP_MODE=production
-DB_HOST=prod-db.example.com
-```
-
-To opt out:
+You can call the parser directly without a file:
 
 ```ts
-loadEnv(undefined, { loadSharedEnv: false });
+import { parseLine, parseValue } from "@mongez/dotenv";
+
+parseLine("APP_PORT=3000");        // ["APP_PORT", 3000]
+parseLine('APP_NAME="My App"');    // ["APP_NAME", "My App"]
+parseLine("# comment");            // []                — non-data
+parseLine("NO_EQUALS_HERE");       // []                — non-data
+parseLine("KEY=a=b=c");            // ["KEY", "a=b=c"]  — splits on FIRST = only
+
+parseValue("3000");                // 3000
+parseValue('"3000"');              // "3000"
 ```
 
-## process.env vs `env()`
+---
 
-When `override: true` (the default), the loader writes each parsed value back to `process.env[key]`. Because `process.env`'s setter coerces every assignment to a string, the value you read from `process.env` is always a string:
+## Reading typed values
+
+`env(key, defaultValue?)` is the typed reader. It returns the value as it was parsed — `number`, `boolean`, `string`, or `null` — not the stringified `process.env` form.
 
 ```ts
-process.env.APP_PORT; // "3000"  — string
-env("APP_PORT");      // 3000    — number
+import { env } from "@mongez/dotenv";
+
+env("APP_PORT");                 // 3000          (number)
+env("APP_PORT", 8080);           // 3000          (loaded value wins)
+env("MISSING");                  // undefined
+env("MISSING", "default");       // "default"
+env("MISSING", 0);               // 0
+env.all();                       // full record, by reference
 ```
 
-If you want the typed value, read through `env()`.
+> Treat `env.all()` as read-only. It returns the underlying store by reference — mutating it mutates the store.
 
-## Resetting
+### `process.env` vs `env()`
+
+When `override: true` (the default), the loader writes each parsed value back to `process.env[key]`. Node's `process.env` setter coerces every value to a string, so the typed view only survives through `env()`:
 
 ```ts
-import { resetEnv } from "@mongez/dotenv";
-
-resetEnv();
+process.env.APP_PORT;  // "3000"  — string (Node coerced it)
+env("APP_PORT");       // 3000    — number (typed)
 ```
 
-Clears the internal store and restores `process.env` from the snapshot the module captured when it was first imported. Keys added to `process.env` AFTER module-load are not deleted by `resetEnv` — see [Caveats](#caveats).
+---
 
-## Caveats
+## Recipes
 
-- **`env()` collapses `null`.** Internally `env(key, def)` returns `envData[key] ?? defaultValue`. The nullish-coalescing operator treats a deliberately-loaded `null` as "missing", so `env("EST_TIME")` returns `undefined` (or the default), not `null`. Use `env.all().EST_TIME` to see the actual stored value.
-- **`resetEnv` is not a full reset.** It does not delete keys added to `process.env` after module load. Restoring snapshot values only restores keys that were present at module-load time.
-- **Quoted-value comment edge case.** A value like `"https:${HTTP_HOST}#frag" # comment` (a quoted string that contains `#` AND has a trailing comment) is not parsed correctly today — the trailing character of the value gets stripped. Keep `#` out of quoted-with-trailing-comment values, or fully quote without a trailing comment.
+### Boot at process start
 
-## Examples
-
-### Reading port + host into a server
+Reach for this when you want a single import that guarantees env is loaded before any other module runs.
 
 ```ts
-import express from "express";
-import { loadEnv, env } from "@mongez/dotenv";
+// src/bootstrap.ts — imported first by your entry point
+import { loadEnv } from "@mongez/dotenv";
 
 loadEnv();
+```
+
+```ts
+// src/index.ts
+import "./bootstrap"; // must run before any module that reads env
+import express from "express";
+import { env } from "@mongez/dotenv";
 
 const app = express();
 app.listen(env("APP_PORT", 3000), env("APP_HOST", "localhost"));
 ```
 
-### Per-environment config
+### Layer a shared base across dev and prod
+
+Reach for this when most env values are the same across environments and only a handful (DB URL, debug flag, log level) need to change.
 
 ```bash
-# .env.shared
+# config/.env.shared
 APP_NAME="My App"
+APP_DESCRIPTION="A web app"
 
-# .env.development
+# config/.env.development
 DB_URL="mongodb://localhost/dev"
 DEBUG=true
+LOG_LEVEL=debug
 
-# .env.production
+# config/.env.production
 DB_URL="mongodb+srv://prod-host/app?retryWrites=true&w=majority"
 DEBUG=false
+LOG_LEVEL=info
 ```
+
+```ts
+import path from "node:path";
+import { loadEnv, env } from "@mongez/dotenv";
+
+loadEnv(undefined, {
+  dir: path.resolve(__dirname, "../config"),
+});
+
+env("APP_NAME"); // "My App"     — shared
+env("DEBUG");    // true | false — per-environment
+env("DB_URL");   // mongo URL    — per-environment
+```
+
+### Build a validated, typed config object
+
+Reach for this when you want one place that names every env value your app needs and crashes loudly on startup if any are missing or wrong-typed. `env()` returns `any`, so layer `zod` on top for runtime validation.
+
+```ts
+import { z } from "zod";
+import { loadEnv, env } from "@mongez/dotenv";
+
+loadEnv();
+
+const schema = z.object({
+  APP_PORT: z.number().int().positive(),
+  DEBUG: z.boolean(),
+  DB_URL: z.string().url(),
+});
+
+export const config = schema.parse({
+  APP_PORT: env("APP_PORT"),
+  DEBUG: env("DEBUG"),
+  DB_URL: env("DB_URL"),
+});
+
+// config.APP_PORT is `number`, config.DEBUG is `boolean`, etc.
+```
+
+### Read-only mode alongside an orchestrator
+
+Reach for this when a parent process (Docker, systemd, CI) already populated `process.env` and you want the `.env` file as a fallback view rather than something that overwrites the orchestrator's values.
 
 ```ts
 import { loadEnv, env } from "@mongez/dotenv";
 
-// NODE_ENV=development → loads .env.shared + .env.development
-loadEnv();
+loadEnv(undefined, { override: false });
 
-env("APP_NAME");  // "My App"
-env("DEBUG");     // true (boolean)
-env("DB_URL");    // "mongodb://localhost/dev"
+process.env.APP_PORT; // whatever the orchestrator set (or undefined)
+env("APP_PORT");      // typed value from the file
 ```
 
-### Lower-level: loading a single file by path
+### Full reset between tests
+
+Reach for this when test suites need each test to start from the same `process.env` baseline. `resetEnv()` deletes every key the loader wrote since import and restores the import-time snapshot.
 
 ```ts
-import { loadEnvFile, env } from "@mongez/dotenv";
+import { afterEach } from "vitest";
+import { loadEnvFile, resetEnv } from "@mongez/dotenv";
 
-loadEnvFile("/etc/myapp/secrets.env", /* override */ false);
-const apiKey = env("API_KEY");
+afterEach(() => {
+  resetEnv();
+});
+
+it("reads APP_PORT as 3000", () => {
+  loadEnvFile("./fixtures/.env.test", true);
+  // ...assertions...
+}); // resetEnv() runs after — store cleared, process.env restored
 ```
+
+---
 
 ## Related packages
 
-| Package | Purpose |
+| Package | Use when you need |
 |---|---|
-| [`@mongez/config`](https://github.com/hassanzohdy/mongez-config) | Higher-level config layer with dot-notation lookups, defaults, and groups. |
-| [`@mongez/cache`](https://github.com/hassanzohdy/mongez-cache) | Pluggable caching layer (useful as a persistence adapter for other Mongez packages). |
+| [`@mongez/config`](https://github.com/hassanzohdy/mongez-config) | A higher-level app-config layer with dot-notation lookups, grouped namespaces, and defaults that sits on top of `env()`. |
+| [`@mongez/cache`](https://github.com/hassanzohdy/mongez-cache) | A pluggable cache layer for memoizing the values you derive from env (DB clients, computed URLs, etc.). |
+
+For the full API reference in a single LLM-friendly file, see [`llms-full.txt`](./llms-full.txt). For release history, see [`CHANGELOG.md`](./CHANGELOG.md).
+
+---
 
 ## License
 

@@ -1,6 +1,6 @@
 {
   "name": "@mongez/dotenv",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "A small .env loader for Node.js with type coercion (number / boolean / null), `${VAR}` interpolation, environment-specific files via NODE_ENV, and a shared-defaults layer.",
   "main": "src/index.ts",
   "sideEffects": false,
