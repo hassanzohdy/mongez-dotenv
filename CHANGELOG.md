@@ -1,6 +1,6 @@
 # Changelog — @mongez/dotenv
 
-## Unreleased
+## [1.2.4] — 2026-05-26
 
 ### Added
 
