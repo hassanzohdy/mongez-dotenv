@@ -117,6 +117,57 @@ describe("D1 — precedence between the file and the real environment", () => {
   });
 });
 
+describe("the loadedKeys invariant behind `process-wins`", () => {
+  /**
+   * `isProcessProvided` is `key in process.env && !loadedKeys.has(key)`. The
+   * `loadedKeys` half is the load-bearing part: without it, `.env.shared`'s
+   * own write-through would look like a platform-injected value to the next
+   * file and silently break layering under `"process-wins"`.
+   *
+   * The precedence tests exercise it only indirectly. This one isolates it:
+   * the two halves below leave `process.env.APP_MODE` in the SAME state
+   * ("development") and differ only in WHO put it there — and the outcomes
+   * are opposite. Anything that removes the `loadedKeys` check makes the two
+   * halves agree, and this test fails.
+   */
+  it("distinguishes a value the loader wrote from one the platform injected", () => {
+    delete process.env.APP_MODE;
+
+    // Half A — the loader itself put APP_MODE into process.env.
+    loadEnvFile(path.join(FIXTURES, ".env.development"), true, "process-wins");
+    expect(process.env.APP_MODE).toBe("development");
+
+    loadEnvFile(path.join(FIXTURES, ".env.production"), true, "process-wins");
+    expect(env("APP_MODE")).toBe("production"); // layering still works
+
+    resetEnv();
+
+    // Half B — identical process.env state, but injected from outside.
+    process.env.APP_MODE = "development";
+    expect(process.env.APP_MODE).toBe("development");
+
+    loadEnvFile(path.join(FIXTURES, ".env.production"), true, "process-wins");
+    expect(env("APP_MODE")).toBe("development"); // the platform wins
+    expect(process.env.APP_MODE).toBe("development"); // and is left intact
+  });
+
+  it("resetEnv clears the tracking, so a later run sees a clean slate", () => {
+    delete process.env.APP_MODE;
+
+    loadEnvFile(path.join(FIXTURES, ".env.development"), true, "process-wins");
+    expect(process.env.APP_MODE).toBe("development");
+
+    // resetEnv deletes what the loader wrote AND empties loadedKeys, so the
+    // key is genuinely gone rather than lingering as an untracked value that
+    // the next run would mistake for an injected one.
+    resetEnv();
+    expect(process.env.APP_MODE).toBeUndefined();
+
+    loadEnvFile(path.join(FIXTURES, ".env.production"), true, "process-wins");
+    expect(env("APP_MODE")).toBe("production");
+  });
+});
+
 describe("D2 — env() falls back to process.env", () => {
   it("returns the injected value for a key no .env file names", () => {
     process.env.ONLY_IN_PROCESS = "from-process";

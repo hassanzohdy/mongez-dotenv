@@ -174,11 +174,28 @@ afterEach(() => {
 
 `parseValue` is intentionally narrow about which strings it converts. Coercion is case-sensitive — `"True"` stays a string.
 
+**A value becomes a number only when it round-trips exactly** — that is, when `String(Number(v))` gives back the original characters. Anything that would lose information stays a string:
+
+| Stays a string | Because |
+|---|---|
+| `0123456789` | leading zero destroyed — account IDs, zips, phone numbers |
+| `1234567890123456789` | beyond `Number.MAX_SAFE_INTEGER`, the value changes |
+| `0x1F` | hex-shaped token would become `31` |
+| `1e5` | exponent-shaped identifier would become `100000` |
+| `+15551234567` | the `+` on an E.164 number would be stripped |
+| `1.50` | the significant trailing zero would be dropped |
+| `Infinity`, `NaN` | never what a config file meant |
+
+This matters most for values arriving from `process.env`: in a `.env` file you can opt out of coercion by quoting, but a value injected by Docker or Kubernetes is never quote-stripped, so the operator has no opt-out. Round-tripping means none is needed.
+
 | Input | Output | Note |
 |---|---|---|
-| `"3000"` | `3000` | Anything where `!isNaN(x)` is true becomes a number. |
+| `"3000"` | `3000` | Coerced only when the number **round-trips exactly** — see below. |
 | `"3.14"` | `3.14` | Decimals supported. |
 | `"-7"` | `-7` | Negatives supported. |
+| `"0123456789"` | `"0123456789"` | Leading zero would be destroyed — stays a string. |
+| `"1e5"` | `"1e5"` | Exponent notation does not round-trip — stays a string. |
+| `"+15551234567"` | `"+15551234567"` | `+` would be stripped — stays a string. |
 | `"true"` | `true` | Lowercase only — `"True"` stays a string. |
 | `"false"` | `false` | Lowercase only. |
 | `"null"` | `null` | Lowercase only. |

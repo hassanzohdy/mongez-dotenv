@@ -28,11 +28,36 @@ const loadedKeys = new Set<string>();
 export type EnvPrecedence = "file-wins" | "process-wins";
 
 /**
- * Check if the given value is a number
- * If it is a string but contains only number, it should return true
+ * Whether the value should be coerced to a number.
+ *
+ * The test is an exact ROUND TRIP: only coerce when `String(Number(v))` gives
+ * back the original characters. `!isNaN(v)` was far too permissive and
+ * silently corrupted whole classes of identifier:
+ *
+ *   0123456789            → 123456789            leading zero destroyed
+ *   1234567890123456789   → 1234567890123456800  past Number.MAX_SAFE_INTEGER
+ *   0x1F                  → 31                   hex-shaped token
+ *   1e5                   → 100000               exponent-shaped identifier
+ *   +15551234567          → 15551234567          `+` stripped off an E.164 number
+ *
+ * That was survivable while only `.env` files were coerced, because an author
+ * could opt out by quoting the value. Since 1.3.0 the same rule applies to
+ * `process.env`, where quoting is not stripped and the operator therefore has
+ * NO opt-out at all — and injected secrets, account IDs and tokens are exactly
+ * the values that look numeric. Round-tripping restores the guarantee without
+ * needing an escape hatch.
+ *
+ * `Number.isFinite` (not just a NaN check) keeps the strings "Infinity",
+ * "-Infinity" and "NaN" as strings. They round-trip through `String(Number(v))`
+ * but are never what a config file meant, and `NaN` in particular is poisonous
+ * to leak into an app since it compares unequal to itself.
  */
 function isNumeric(value: any) {
-  return !isNaN(value);
+  if (typeof value !== "string" || value === "") return false;
+
+  const numeric = Number(value);
+
+  return Number.isFinite(numeric) && String(numeric) === value;
 }
 
 /**
