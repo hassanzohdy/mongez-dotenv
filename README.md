@@ -36,9 +36,10 @@ const dbUrl: string = env("DB_URL");
 | **Typed coercion** | `"3000"` becomes `3000`, `"true"` becomes `true`, `"null"` becomes `null` — coercion is intentionally narrow and case-sensitive. |
 | **`NODE_ENV` file resolution** | Auto-picks `.env.${NODE_ENV}` when present, falls back to `.env`. |
 | **Shared defaults** | `.env.shared` loads first, environment-specific files override it. |
-| **`${VAR}` interpolation** | Reference earlier keys inside later values for composed URLs and paths. |
+| **`${VAR}` interpolation** | Reference earlier keys — or platform-injected `process.env` values — inside later values. Unresolvable references throw instead of corrupting the value. |
 | **Quoted values** | `"`, `'`, and `` ` `` all work; quotes opt out of coercion and allow `#` inside the value. |
-| **Typed reader** | `env(key, default)` returns the parsed JS type, not the stringified `process.env` form. |
+| **Typed reader** | `env(key, default)` returns the parsed JS type, not the stringified `process.env` form — and falls back to `process.env` before the default. |
+| **Precedence control** | `precedence: "process-wins"` makes platform-injected values outrank the `.env` file, for Docker / Kubernetes / CI. |
 | **Read-only mode** | Opt out of writing to `process.env` with `override: false`. |
 | **Full reset** | `resetEnv()` clears loaded values and removes process.env keys the loader wrote since import. |
 | **Zero dependencies** | No runtime or peer deps. One file, Node-only. |
@@ -90,7 +91,7 @@ env("MISSING", "default"); // "default"
 env.all();                 // { APP_NAME: "My App", APP_PORT: 3000, ... }
 ```
 
-That's the entire happy path. Everything below is depth on the same eight exports.
+That's the entire happy path. Everything below is depth on the same nine exports.
 
 ---
 
@@ -101,6 +102,7 @@ That's the entire happy path. Everything below is depth on the same eight export
 1. If `loadSharedEnv` is `true` (default) and `${dir}/.env.shared` exists, load it first.
 2. Try `${dir}/.env.${process.env.NODE_ENV}` (e.g. `.env.production`).
 3. If that file does not exist, fall back to `${dir}/.env`.
+4. If *that* does not exist either, do nothing. A project with no `.env` of any kind is a supported state — containers inject everything.
 
 ```ts
 import { loadEnv } from "@mongez/dotenv";
@@ -110,7 +112,10 @@ loadEnv("/etc/myapp/secrets.env");          // explicit path
 loadEnv(undefined, { dir: __dirname });     // override the search root
 loadEnv(undefined, { override: false });    // populate the store but skip process.env
 loadEnv(undefined, { loadSharedEnv: false });
+loadEnv(undefined, { precedence: "process-wins" }); // injected values outrank the file
 ```
+
+A path you pass explicitly still throws when it is missing — you named it, so a typo should be loud. Only the paths `loadEnv` derives for itself are optional.
 
 ### `EnvLoaderOptions`
 
@@ -119,16 +124,35 @@ loadEnv(undefined, { loadSharedEnv: false });
 | `override` | `true` | Mirror parsed values into `process.env`. Set to `false` to keep `process.env` untouched. |
 | `dir` | `process.cwd()` | Directory the resolver searches for `.env.shared`, `.env.${NODE_ENV}`, and `.env`. |
 | `loadSharedEnv` | `true` | Whether to load `.env.shared` before the environment-specific file. |
+| `precedence` | `"file-wins"` | Who wins when a key is in both the file and the real environment. See below. |
 
-### `loadEnvFile(envPath, override)` — load one explicit file
+### `precedence` — who owns a key that exists in both places
 
-Use this when you need to load a file outside the standard resolution chain — multiple env files at different paths, host-specific overrides on disk, or deferred loading. Throws `Error: .env file not found at <path>` when the file is missing.
+> **Read this before deploying.** On the default, `"file-wins"`, a `.env` file baked into your image **replaces** the `DATABASE_URL`, port, or secret your platform injected — silently. That is the historical behaviour and it stays the default for all of v1.x so a minor bump never changes what a running deployment reads. **v2.0 will flip the default to `"process-wins"`.**
+
+| Value | Behaviour |
+|---|---|
+| `"file-wins"` (default) | The `.env` file value replaces whatever was already in `process.env`, in both the store and `process.env` itself. |
+| `"process-wins"` | A value already present in `process.env` is authoritative: the file does not replace it in the store and does not write over it. The file becomes a fallback layer underneath the real environment — matching `dotenv`, `dotenv-flow`, Vite, and Next. |
+
+```ts
+// Docker / Kubernetes / CI — the platform owns the environment.
+loadEnv(undefined, { precedence: "process-wins" });
+```
+
+Keys the loader itself wrote earlier in the same run (`.env.shared`, or a previous `loadEnvFile`) are tracked and are **not** mistaken for platform-injected values, so file layering keeps working under `"process-wins"`.
+
+### `loadEnvFile(envPath, override, precedence?)` — load one explicit file
+
+Use this when you need to load a file outside the standard resolution chain — multiple env files at different paths, host-specific overrides on disk, or deferred loading. Throws `Error: .env file not found at <path>` when the file is missing; it is the primitive, so it never guesses.
 
 ```ts
 import { loadEnvFile } from "@mongez/dotenv";
 
 loadEnvFile("/etc/myapp/base.env",  true);   // load + write to process.env
 loadEnvFile("/etc/myapp/local.env", true);   // overrides keys from base
+
+loadEnvFile("/etc/myapp/base.env", true, "process-wins");
 ```
 
 ### `resetEnv()` — true revert to import time
@@ -165,7 +189,7 @@ afterEach(() => {
 
 ### `${VAR}` interpolation
 
-A value containing `${VAR}` substitutes another key from the internal store at parse time. The referenced key must appear earlier in the same file — or in `.env.shared`, which loads first.
+A value containing `${VAR}` substitutes another key at parse time. Resolution order is the internal store first, then `process.env`.
 
 ```bash
 APP_HOST=localhost
@@ -177,7 +201,20 @@ APP_URL=http://${APP_HOST}:${APP_PORT}
 env("APP_URL"); // "http://localhost:3000"
 ```
 
-Substitutions read from `@mongez/dotenv`'s internal store, not from `process.env`. Unresolved references substitute the literal string `"undefined"`.
+```bash
+# DB_HOST is injected by the platform and appears in no .env file
+DB_URL=postgres://${DB_HOST}/app     # resolves from process.env
+```
+
+**An unresolvable reference throws, naming the key.** Substitution is not best-effort: emitting `postgres://undefined/app` would start the app and fail much later, far from the cause.
+
+```
+Error: Cannot resolve ${DB_HOST}: "DB_HOST" is not defined in the loaded env data
+or in process.env. Forward references are not supported — declare "DB_HOST" before
+the line that references it, or in .env.shared, which loads first.
+```
+
+Forward references are unsupported: within a file, lines are processed top to bottom, so a referenced key must appear on an earlier line (or in `.env.shared`, which loads first, or in `process.env`).
 
 ### Standalone `parseLine` / `parseValue`
 
@@ -202,18 +239,23 @@ parseValue('"3000"');              // "3000"
 
 `env(key, defaultValue?)` is the typed reader. It returns the value as it was parsed — `number`, `boolean`, `string`, or `null` — not the stringified `process.env` form.
 
+Lookup order is **loaded store → `process.env` → `defaultValue`**:
+
 ```ts
 import { env } from "@mongez/dotenv";
 
-env("APP_PORT");                 // 3000          (number)
+env("APP_PORT");                 // 3000          (number, from .env)
 env("APP_PORT", 8080);           // 3000          (loaded value wins)
+env("NODE_ENV");                 // "production"  (from process.env — no file names it)
 env("MISSING");                  // undefined
 env("MISSING", "default");       // "default"
 env("MISSING", 0);               // 0
-env.all();                       // full record, by reference
+env.all();                       // the loaded store, by reference
 ```
 
-> Treat `env.all()` as read-only. It returns the underlying store by reference — mutating it mutates the store.
+Values that come from `process.env` get the same narrow coercion a file value gets — `"8080"` reads back as `8080`, `"true"` as `true` — so a key's type does not depend on whether it arrived from a file or from the platform. Coercion is deliberately narrower there: no quote stripping and no `${VAR}` interpolation, because a real environment variable is a literal value.
+
+> Treat `env.all()` as read-only. It returns the underlying store by reference — mutating it mutates the store. It contains only what the `.env` files declared; it is **not** merged with `process.env`. Use `env(key)` for the fallback.
 
 ### `process.env` vs `env()`
 
@@ -307,17 +349,28 @@ export const config = schema.parse({
 // config.APP_PORT is `number`, config.DEBUG is `boolean`, etc.
 ```
 
-### Read-only mode alongside an orchestrator
+### Let the platform's injected values win (Docker / Kubernetes / CI)
 
-Reach for this when a parent process (Docker, systemd, CI) already populated `process.env` and you want the `.env` file as a fallback view rather than something that overwrites the orchestrator's values.
+Reach for this when a parent process (Docker, systemd, CI) already populated `process.env` and the `.env` file baked into the image should be a fallback layer, not a replacement.
 
 ```ts
 import { loadEnv, env } from "@mongez/dotenv";
 
-loadEnv(undefined, { override: false });
+loadEnv(undefined, { precedence: "process-wins" });
+
+// DATABASE_URL injected by the platform → the .env line is ignored.
+// APP_NAME only in .env                 → the file value is used.
+env("DATABASE_URL"); // the injected value
+env("APP_NAME");     // the file value
+```
+
+Pair it with `override: false` if you also want `process.env` left completely untouched for keys the file *does* own:
+
+```ts
+loadEnv(undefined, { precedence: "process-wins", override: false });
 
 process.env.APP_PORT; // whatever the orchestrator set (or undefined)
-env("APP_PORT");      // typed value from the file
+env("APP_PORT");      // typed value — injected if present, else from the file
 ```
 
 ### Full reset between tests

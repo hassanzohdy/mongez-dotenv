@@ -1,39 +1,54 @@
 ---
 name: mongez-dotenv-overview
 description: |
-  High-level mental model of `@mongez/dotenv` — what it does, its module-scoped state, scope boundaries, and known quirks.
-  TRIGGER when: code imports any of `loadEnv`, `loadEnvFile`, `parseLine`, `parseValue`, `env`, `resetEnv`, or `EnvLoaderOptions` from `@mongez/dotenv` for the first time; user asks "what is @mongez/dotenv", "how does the envData store work", or "should I use @mongez/dotenv vs dotenv"; typical import pattern like `import { loadEnv, env } from "@mongez/dotenv"`.
-  SKIP: deep-dive questions on specific APIs — use `mongez-dotenv-loader` (file loading) or `mongez-dotenv-parser` (parsing/reading); end-to-end recipes — use `mongez-dotenv-recipes`; the app-config layer (groups, dot-notation, schema) is `@mongez/config`, not this package which only parses `.env` files.
+  @mongez/dotenv — a small Node.js .env loader. Parses KEY=VALUE lines, coerces typed primitives (number, boolean, null), supports ${VAR} interpolation, picks files by NODE_ENV, layers a .env.shared defaults file.
 ---
 
-# Overview
+# @mongez/dotenv — Overview
 
-`@mongez/dotenv` is a small `.env` loader for Node.js. It parses `KEY=VALUE` lines, coerces values to typed primitives (number, boolean, `null`) when they look like one, supports `${VAR}` interpolation between keys, picks the right file based on `NODE_ENV`, and layers a `.env.shared` file of defaults underneath.
+A small, zero-dependency `.env` loader for Node.js. Reads `KEY=VALUE` lines, **coerces values to typed primitives** when they look like one (number, boolean, `null`), supports `${VAR}` interpolation between keys, picks the right file based on `NODE_ENV`, and layers a `.env.shared` file of defaults underneath.
 
-The package is intentionally narrow:
+## Highlighted features
 
-- One source file (`src/index.ts`).
-- No runtime dependencies, no peer dependencies.
-- Node-only — uses `fs` and `process`.
+<div class="mongez-highlights">
+
+<div class="mongez-highlight" data-accent="ice">
+  <svg class="mongez-highlight-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+  <h3>Typed primitives, not strings</h3>
+  <p><code>env("APP_PORT", 3000)</code> returns the number <code>3000</code> — not the string <code>"3000"</code>. Same for booleans and <code>null</code>.</p>
+</div>
+
+<div class="mongez-highlight" data-accent="ice">
+  <svg class="mongez-highlight-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+  <h3><code>${VAR}</code> interpolation</h3>
+  <p><code>DB_URL=postgres://${DB_USER}:${DB_PASS}@${DB_HOST}/db</code> — substitution happens at parse time, resolving from already-loaded keys then <code>process.env</code>. An unresolvable reference throws instead of corrupting the value.</p>
+</div>
+
+<div class="mongez-highlight" data-accent="fire">
+  <svg class="mongez-highlight-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+  <h3>NODE_ENV file picker</h3>
+  <p>Reads <code>.env.&lt;NODE_ENV&gt;</code> automatically and layers <code>.env.shared</code> underneath for cross-environment defaults.</p>
+</div>
+
+<div class="mongez-highlight" data-accent="bolt">
+  <svg class="mongez-highlight-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+  <h3>Zero deps, one file</h3>
+  <p>One source file (<code>src/index.ts</code>), no runtime or peer dependencies. Node-only — uses <code>fs</code> and <code>process</code>.</p>
+</div>
+
+</div>
 
 ## Install
 
 ```sh
-# npm
 npm install @mongez/dotenv
-
-# yarn
-yarn add @mongez/dotenv
-
-# pnpm
-pnpm add @mongez/dotenv
+# or: yarn add @mongez/dotenv
+# or: pnpm add @mongez/dotenv
 ```
 
-Zero runtime / peer dependencies. Node-only (uses `fs` and `process`).
+Zero runtime / peer dependencies. Node-only.
 
-## Quick example
-
-Boot the loader once at process start, then read typed values — `env()` returns real primitives, not the stringified `process.env` form:
+## Quick peek
 
 ```ts
 import { loadEnv, env } from "@mongez/dotenv";
@@ -45,40 +60,38 @@ const debug: boolean = env("DEBUG", false);     // true / false, not "true"
 const dbUrl: string  = env("DB_URL");
 ```
 
-## Import pattern
-
-```ts
-import {
-  loadEnv,
-  loadEnvFile,
-  parseLine,
-  parseValue,
-  env,
-  resetEnv,
-  type EnvLoaderOptions,
-} from "@mongez/dotenv";
-```
+Boot once at process start, then read typed values from anywhere. `env()` returns real primitives, not the stringified `process.env` form.
 
 ## Mental model
 
 | Concept | Where it lives | What it is |
 |---|---|---|
 | Internal store | Module-level `envData` object | The typed view of every loaded key. Read via `env()` / `env.all()`. |
-| `process.env` mirror | Real Node `process.env` | Optional write-through, controlled by the `override` option. Always stores strings. |
+| `process.env` mirror | Real Node `process.env` | Optional write-through, controlled by `override`. Always stores strings. |
 | Initial snapshot | Module-level `initialProcessEnvData` | Captured at first import. `resetEnv` restores keys from this snapshot. |
+| Precedence | `precedence` option | Who wins when a key is in both the file and `process.env`. `"file-wins"` (default) or `"process-wins"`. |
 
-The loader is **stateful and module-scoped**. There is one store per Node process. Calling `loadEnv` twice merges the second file's keys into the first store rather than starting over.
+The loader is **stateful and module-scoped**. One store per Node process. Calling `loadEnv` twice merges the second file's keys into the first store rather than starting over.
+
+`env(key)` reads **store → `process.env` → default**, so a platform-injected variable that no file names is still visible.
 
 ## Scope boundaries
 
 | Concern | Lives in | Why |
 |---|---|---|
-| Validation / schema | `zod`, `valibot`, your code | This package does not type-check loaded values. |
-| Higher-level config (groups, dot-notation, defaults) | `@mongez/config` | This package is one slice — the file-loading slice. |
-| Caching | `@mongez/cache` | Unrelated concern. |
-| Browser/cookie/localStorage | Other packages | This is a Node filesystem reader. |
+| Validation / schema | `zod`, `valibot`, your code | Doesn't type-check loaded values |
+| Higher-level config (groups, defaults, dot-notation) | [`@mongez/config`](/config/overview/) | This is one slice — the file-loading slice |
+| Browser/cookie/localStorage | Other packages | This is a Node filesystem reader |
 
-## Quirks worth knowing up front
+## Quirks worth knowing
 
-1. **`process.env` always stringifies.** Even though the package writes `process.env.PORT = 3000`, Node's `process.env` setter coerces to `"3000"`. Use `env()` if you want the typed value.
-2. **`${VAR}` is parse-time only.** Substitutions happen the moment the value is parsed. Later updates to the referenced key do not re-trigger substitution in earlier lines.
+1. **`process.env` always stringifies.** Even though the package writes `process.env.PORT = 3000`, Node's `process.env` setter coerces to `"3000"`. Use `env()` for the typed value.
+2. **`${VAR}` is parse-time only.** Substitutions happen the moment the value is parsed. Later updates to the referenced key do not re-trigger substitution in earlier lines. Forward references (declaring the key later in the same file) are unsupported and throw.
+3. **The default precedence is `"file-wins"`, which is the deployment hazard.** A `.env` file baked into a container image replaces the `DATABASE_URL` / port / secret the platform injected. Pass `precedence: "process-wins"` in containerised environments. **v2.0 flips the default.**
+4. **`env.all()` is the file store only** — it is not merged with `process.env`. The fallback lives in `env(key)`.
+
+## Where to go next
+
+- **[Loader](../loader/)** — `loadEnv` / `loadEnvFile`, file-picking semantics
+- **[Parser](../parser/)** — `parseLine` / `parseValue`, type coercion rules
+- **[Recipes](../recipes/)** — common patterns

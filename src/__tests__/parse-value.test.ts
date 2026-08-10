@@ -76,11 +76,14 @@ describe("parseValue — `${...}` interpolation", () => {
     );
   });
 
-  it("substitutes `undefined` when the key has not been loaded", () => {
-    // Standalone parseValue does not look at process.env, only the
-    // package's internal envData store.
-    expect(parseValue("prefix:${NOT_DEFINED}:suffix")).toBe(
-      "prefix:undefined:suffix"
+  it("throws naming the key when the reference resolves nowhere", () => {
+    // Resolution order is the internal store, then process.env. A genuine
+    // miss throws rather than baking the literal string "undefined" into
+    // the value — see process-env.test.ts for the full D3 coverage.
+    delete process.env.NOT_DEFINED;
+
+    expect(() => parseValue("prefix:${NOT_DEFINED}:suffix")).toThrow(
+      /NOT_DEFINED/
     );
   });
 });
