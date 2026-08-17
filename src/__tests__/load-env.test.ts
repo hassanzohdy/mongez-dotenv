@@ -68,6 +68,24 @@ describe("loadEnv — file resolution", () => {
     });
     expect(env("APP_MODE")).toBe("development");
   });
+
+  it("rejects a `..` traversal segment in `envPath`", () => {
+    expect(() =>
+      loadEnv(`${FIXTURES}/../../etc/passwd`, {
+        dir: FIXTURES,
+        override: false,
+      })
+    ).toThrow(/path traversal/);
+  });
+
+  it("rejects a `..` traversal segment in `dir`", () => {
+    expect(() =>
+      loadEnv(undefined, {
+        dir: `${FIXTURES}/../../etc`,
+        override: false,
+      })
+    ).toThrow(/path traversal/);
+  });
 });
 
 describe("loadEnv — .env.shared", () => {

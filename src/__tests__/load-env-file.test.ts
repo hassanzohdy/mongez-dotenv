@@ -41,6 +41,12 @@ describe("loadEnvFile", () => {
     );
   });
 
+  it("rejects a path containing a `..` traversal segment", () => {
+    expect(() =>
+      loadEnvFile(`${FIXTURES}/../../etc/passwd`, true)
+    ).toThrow(/path traversal/);
+  });
+
   it("populates env() from a real file", () => {
     loadEnvFile(path.join(FIXTURES, ".env"), false);
     expect(env("APP_HOST")).toBe("localhost");

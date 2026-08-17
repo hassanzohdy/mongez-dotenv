@@ -1,6 +1,20 @@
 import { cwd } from "process";
 import { existsSync, readFileSync } from "fs";
 
+// Rejects `..` traversal segments in any path fed to the filesystem so a
+// caller wiring `dir`/`envPath` to untrusted input (e.g. per-tenant config)
+// can't walk this loader outside its intended directory. Absolute paths are
+// left alone — passing one is the caller explicitly asserting that exact
+// file, the documented/legitimate way to point this loader anywhere.
+function assertNoTraversal(candidate: string, label: string): void {
+  const segments = candidate.split(/[\\/]/);
+  if (segments.includes("..")) {
+    throw new Error(
+      `Refusing to load ${label}: path traversal ("..") is not allowed: ${candidate}`
+    );
+  }
+}
+
 const envData: Record<string, any> = {};
 
 const initialProcessEnvData = { ...process.env };
@@ -214,6 +228,9 @@ const defaultOptions = {
 export function loadEnv(envPath?: string, envOptions?: EnvLoaderOptions) {
   const options = { ...defaultOptions, ...(envOptions || {}) };
 
+  assertNoTraversal(options.dir, "dir");
+  if (envPath) assertNoTraversal(envPath, "envPath");
+
   if (options.loadSharedEnv && existsSync(options.dir + "/.env.shared")) {
     loadEnvFile(
       options.dir + "/.env.shared",
@@ -250,6 +267,8 @@ export function loadEnvFile(
   override: boolean,
   precedence: EnvPrecedence = "file-wins"
 ) {
+  assertNoTraversal(envPath, "envPath");
+
   if (!existsSync(envPath)) {
     throw new Error(`.env file not found at ${envPath}`);
   }
