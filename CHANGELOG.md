@@ -1,5 +1,10 @@
 # Changelog — @mongez/dotenv
 
+## [1.3.3] — 2026-09-25
+
+### Changed
+- Added a grouped Agent Kit skills index for topic-based discovery.
+
 ## [1.3.2] — 2026-08-17
 
 ### Security
