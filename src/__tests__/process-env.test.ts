@@ -3,7 +3,7 @@
  * the boundary between a `.env` file and the real process environment:
  *
  * - D1 — `.env` file values unconditionally beat container-injected env vars.
- *        Fixed in v1.x phase 1 by the `precedence` option (default unchanged).
+ *        Fixed by the `precedence` option; `process-wins` is the default since 2.0.
  * - D2 — `env()` never consulted `process.env`, so a platform-injected value
  *        that no file named returned its default forever.
  * - D3 — an unresolvable `${VAR}` baked the literal string "undefined" into
@@ -62,13 +62,22 @@ afterEach(() => {
 });
 
 describe("D1 — precedence between the file and the real environment", () => {
-  it("defaults to `file-wins`, keeping the historical behaviour", () => {
+  it("defaults to `process-wins` (2.0): the injected value outranks the file", () => {
     process.env.APP_HOST = "injected-host";
 
     loadEnv(undefined, { dir: FIXTURES });
 
-    // .env declares APP_HOST=localhost and, on the default, replaces the
-    // injected value in both the store and process.env.
+    // .env declares APP_HOST=localhost, but the injected value is kept in
+    // both the store and process.env.
+    expect(env("APP_HOST")).toBe("injected-host");
+    expect(process.env.APP_HOST).toBe("injected-host");
+  });
+
+  it("`file-wins`, passed explicitly, keeps the 1.x behaviour", () => {
+    process.env.APP_HOST = "injected-host";
+
+    loadEnv(undefined, { dir: FIXTURES, precedence: "file-wins" });
+
     expect(env("APP_HOST")).toBe("localhost");
     expect(process.env.APP_HOST).toBe("localhost");
   });

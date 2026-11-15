@@ -1,7 +1,7 @@
 ---
 name: mongez-dotenv-recipes
 description: |
-  Idiomatic patterns and worked examples for common `@mongez/dotenv` use cases — bootstrapping, layered env files, typed config objects, read-only mode, `process-wins` precedence for containerised deploys, reading platform-injected variables, optional `.env`, `null` handling, and full reset.
+  Idiomatic patterns and worked examples for common `@mongez/dotenv` use cases — bootstrapping, layered env files, typed config objects, read-only mode, `process-wins` (default) precedence for containerised deploys, reading platform-injected variables, optional `.env`, `null` handling, and full reset.
 ---
 
 # Recipes
@@ -116,14 +116,14 @@ process.env.APP_PORT;   // unchanged
 env("APP_PORT");        // typed value from the file
 ```
 
-`override` controls only the write-back. It does **not** control precedence: with the default `precedence: "file-wins"`, the file value still replaces the injected one inside the store, so `env("APP_PORT")` returns the file's value even when the orchestrator set a different one. Use `precedence` for that.
+`override` controls only the write-back. It does **not** control precedence: with the default `precedence: "process-wins"` the injected value is kept, while with `precedence: "file-wins"` the file value replaces the injected one inside the store, so `env("APP_PORT")` returns the file's value even when the orchestrator set a different one. Use `precedence` for that.
 
 ## Let the platform's injected values win (Docker / Kubernetes / CI)
 
 ```ts
 import { loadEnv, env } from "@mongez/dotenv";
 
-loadEnv(undefined, { precedence: "process-wins" });
+loadEnv(); // "process-wins" is the 2.0 default
 
 // DATABASE_URL injected by the platform → the .env line is ignored (not even
 //                                         parsed or interpolated), process.env is left intact.
@@ -132,12 +132,12 @@ env("DATABASE_URL");
 env("APP_NAME");
 ```
 
-Reach for this in any containerised deploy. The default, `"file-wins"`, means a `.env` file baked into the image silently overwrites what the platform injected — the exact inversion of what `dotenv`, `dotenv-flow`, Vite and Next do. It is still the default so upgrading never changes what a running deployment reads; pass `"process-wins"` explicitly.
+This is the default since 2.0, matching `dotenv`, `dotenv-flow`, Vite and Next. In 1.x the default was `"file-wins"`, where a `.env` file baked into the image silently overwrote what the platform injected; pass `precedence: "file-wins"` explicitly only if you need that.
 
 Combine with `override: false` when `process.env` should also be left untouched for the keys the file does own:
 
 ```ts
-loadEnv(undefined, { precedence: "process-wins", override: false });
+loadEnv(undefined, { override: false });
 ```
 
 ## Reading a variable that only the platform sets

@@ -15,7 +15,7 @@ function loadEnv(envPath?: string, options?: EnvLoaderOptions): void
 function loadEnvFile(
   envPath: string,
   override: boolean,
-  precedence?: EnvPrecedence,   // default "file-wins"
+  precedence?: EnvPrecedence,   // default "process-wins"
 ): void
 function resetEnv(): void
 
@@ -25,7 +25,7 @@ type EnvLoaderOptions = {
   override?: boolean;           // default true — also write into process.env
   dir?: string;                 // default cwd() (read on every call) — search root
   loadSharedEnv?: boolean;      // default true — load .env.shared first
-  precedence?: EnvPrecedence;   // default "file-wins" — who wins vs process.env
+  precedence?: EnvPrecedence;   // default "process-wins" — who wins vs process.env
 };
 ```
 
@@ -62,21 +62,24 @@ An explicitly-passed `envPath` that does not exist still throws — the caller n
 
 ## Options merge and `cwd()`
 
-Options are merged field by field, and an explicit `undefined` means "use the default": `{ dir: undefined }` searches `cwd()`, `{ override: undefined }` is `true`, `{ loadSharedEnv: undefined }` is `true`, `{ precedence: undefined }` is `"file-wins"`. An empty `dir: ""` also means `cwd()`. `process.cwd()` is resolved on every `loadEnv` call, not once at import, so `process.chdir()` before the call is honoured.
+Options are merged field by field, and an explicit `undefined` means "use the default": `{ dir: undefined }` searches `cwd()`, `{ override: undefined }` is `true`, `{ loadSharedEnv: undefined }` is `true`, `{ precedence: undefined }` is `"process-wins"`. An empty `dir: ""` also means `cwd()`. `process.cwd()` is resolved on every `loadEnv` call, not once at import, so `process.chdir()` before the call is honoured.
 
 ## Precedence semantics — file vs. the real environment
 
 | Setting | A key in BOTH the file and `process.env` |
 |---|---|
-| `precedence: "file-wins"` (default) | The file value replaces the injected one, in the store and (when `override`) in `process.env`. |
-| `precedence: "process-wins"` | The injected value is authoritative. The file does not replace it in the store and does not write over it. The decision is made on the key before the value is parsed, so the file's line for that key is never interpolated and cannot throw. |
+| `precedence: "process-wins"` (default) | The injected value is authoritative. The file does not replace it in the store and does not write over it. The decision is made on the key before the value is parsed, so the file's line for that key is never interpolated and cannot throw. |
+| `precedence: "file-wins"` | The file value replaces the injected one, in the store and (when `override`) in `process.env`. This was the 1.x default; opt in explicitly. |
 
 ```ts
-// Docker / Kubernetes / CI: the platform owns the environment.
-loadEnv(undefined, { precedence: "process-wins" });
+// Default (2.0): the platform owns the environment.
+loadEnv();
+
+// Opt in to the 1.x behaviour.
+loadEnv(undefined, { precedence: "file-wins" });
 ```
 
-- `"file-wins"` is still the default, so upgrading never changes what a running deployment reads. Select `"process-wins"` explicitly for containerised deploys.
+- `"process-wins"` is the default since 2.0 (it was `"file-wins"` in 1.x). The old hazard, a baked-in `.env` replacing platform-injected values, now applies only to callers who pass `"file-wins"`.
 - Keys the loader itself wrote earlier in the same run (`.env.shared`, or a previous `loadEnvFile`) are tracked in an internal `Set` and are NOT mistaken for platform-injected values — file layering keeps working under `"process-wins"`.
 - Values taken from `process.env` are coerced to primitives the same way file values are (`"8080"` → `8080`), but WITHOUT quote stripping or `${VAR}` interpolation.
 
@@ -121,7 +124,7 @@ If a key appears in both files, the environment-specific file wins (it loads sec
 
 ```ts
 loadEnvFile("/abs/path/to/.env", /* override */ true);
-loadEnvFile("/abs/path/to/.env", true, "process-wins");
+loadEnvFile("/abs/path/to/.env", true, "file-wins"); // precedence defaults to "process-wins"
 ```
 
 Loads exactly one file. Always throws if the path does not exist — it is the primitive and never guesses:
@@ -172,8 +175,8 @@ loadEnv(undefined, { loadSharedEnv: false });
 ```
 
 ```ts
-// 4b. Containerised deploy — injected values outrank the baked-in file.
-loadEnv(undefined, { precedence: "process-wins" });
+// 4b. Containerised deploy — injected values outrank the baked-in file (the 2.0 default).
+loadEnv();
 ```
 
 ```ts

@@ -41,7 +41,7 @@ const dbUrl: string = env("DB_URL");
 | **Inline comments** | `PORT=3000 # dev` works for unquoted values; a `#` with no whitespace before it (`COLOR=#fff`) is kept. |
 | **Atomic file loads** | A file is parsed completely before anything is written, so a file that throws leaves the store and `process.env` untouched. |
 | **Typed reader** | `env(key, default)` returns the parsed JS type, not the stringified `process.env` form — and falls back to `process.env` before the default. |
-| **Precedence control** | `precedence: "process-wins"` makes platform-injected values outrank the `.env` file, for Docker / Kubernetes / CI. |
+| **Precedence control** | `process-wins` (the 2.0 default) keeps platform-injected values over the `.env` file, for Docker / Kubernetes / CI; `precedence: "file-wins"` opts back into the 1.x behaviour. |
 | **Read-only mode** | Opt out of writing to `process.env` with `override: false`. |
 | **Full reset** | `resetEnv()` clears loaded values and puts back every `process.env` key the loader wrote since import. |
 | **Zero dependencies** | No runtime or peer deps. One file, Node-only. |
@@ -114,7 +114,7 @@ loadEnv("/etc/myapp/secrets.env");          // explicit path
 loadEnv(undefined, { dir: __dirname });     // override the search root
 loadEnv(undefined, { override: false });    // populate the store but skip process.env
 loadEnv(undefined, { loadSharedEnv: false });
-loadEnv(undefined, { precedence: "process-wins" }); // injected values outrank the file
+loadEnv(undefined, { precedence: "file-wins" });    // opt in: the file replaces injected values (1.x behaviour)
 ```
 
 A path you pass explicitly still throws when it is missing — you named it, so a typo should be loud. Only the paths `loadEnv` derives for itself are optional.
@@ -130,22 +130,25 @@ A path you pass explicitly still throws when it is missing — you named it, so 
 | `override` | `true` | Mirror parsed values into `process.env`. Set to `false` to keep `process.env` untouched. |
 | `dir` | `process.cwd()` | Directory the resolver searches for `.env.shared`, `.env.${NODE_ENV}`, and `.env`. |
 | `loadSharedEnv` | `true` | Whether to load `.env.shared` before the environment-specific file. |
-| `precedence` | `"file-wins"` | Who wins when a key is in both the file and the real environment. See below. |
+| `precedence` | `"process-wins"` | Who wins when a key is in both the file and the real environment. See below. |
 
-Options are merged field by field, and an explicit `undefined` means "use the default": `{ dir: undefined }` searches `cwd()`, `{ override: undefined }` writes to `process.env`, `{ loadSharedEnv: undefined }` loads `.env.shared`, `{ precedence: undefined }` is `"file-wins"`. An empty `dir: ""` also means `cwd()`. Config objects with optional fields can be passed straight through.
+Options are merged field by field, and an explicit `undefined` means "use the default": `{ dir: undefined }` searches `cwd()`, `{ override: undefined }` writes to `process.env`, `{ loadSharedEnv: undefined }` loads `.env.shared`, `{ precedence: undefined }` is `"process-wins"`. An empty `dir: ""` also means `cwd()`. Config objects with optional fields can be passed straight through.
 
 ### `precedence` — who owns a key that exists in both places
 
-> **Read this before deploying.** On the default, `"file-wins"`, a `.env` file baked into your image **replaces** the `DATABASE_URL`, port, or secret your platform injected — silently. That is the historical behaviour and it is still the default, so upgrading never changes what a running deployment reads. Pass `precedence: "process-wins"` explicitly for containerised deploys.
+> **Read this before upgrading or opting into `"file-wins"`.** Since 2.0 the default is `"process-wins"`: a value already in `process.env` (your platform's `DATABASE_URL`, port, or secret) is kept, and the `.env` file only fills in what is missing. In 1.x the default was `"file-wins"`, where a `.env` file baked into your image **silently replaces** the injected value. That hazard now applies only to callers who pass `precedence: "file-wins"`. If a deployment relied on the file overriding the environment, pass it explicitly.
 
 | Value | Behaviour |
 |---|---|
-| `"file-wins"` (default) | The `.env` file value replaces whatever was already in `process.env`, in both the store and `process.env` itself. |
-| `"process-wins"` | A value already present in `process.env` is authoritative: the file does not replace it in the store and does not write over it. The file's line for that key is not even parsed, so it is never interpolated and cannot throw. The file becomes a fallback layer underneath the real environment — matching `dotenv`, `dotenv-flow`, Vite, and Next. |
+| `"process-wins"` (default) | A value already present in `process.env` is authoritative: the file does not replace it in the store and does not write over it. The file's line for that key is not even parsed, so it is never interpolated and cannot throw. The file becomes a fallback layer underneath the real environment — matching `dotenv`, `dotenv-flow`, Vite, and Next. |
+| `"file-wins"` | The `.env` file value replaces whatever was already in `process.env`, in both the store and `process.env` itself. This was the 1.x default; pass it explicitly to keep that behaviour. |
 
 ```ts
-// Docker / Kubernetes / CI — the platform owns the environment.
-loadEnv(undefined, { precedence: "process-wins" });
+// Default (2.0): the platform owns the environment, the file is a fallback.
+loadEnv();
+
+// Opt in to the 1.x behaviour: the file replaces injected values.
+loadEnv(undefined, { precedence: "file-wins" });
 ```
 
 Keys the loader itself wrote earlier in the same run (`.env.shared`, or a previous `loadEnvFile`) are tracked and are **not** mistaken for platform-injected values, so file layering keeps working under `"process-wins"`.
@@ -162,7 +165,7 @@ import { loadEnvFile } from "@mongez/dotenv";
 loadEnvFile("/etc/myapp/base.env",  true);   // load + write to process.env
 loadEnvFile("/etc/myapp/local.env", true);   // overrides keys from base
 
-loadEnvFile("/etc/myapp/base.env", true, "process-wins");
+loadEnvFile("/etc/myapp/base.env", true, "file-wins"); // precedence defaults to "process-wins"
 ```
 
 ### `resetEnv()` — true revert to import time
@@ -449,7 +452,7 @@ Reach for this when a parent process (Docker, systemd, CI) already populated `pr
 ```ts
 import { loadEnv, env } from "@mongez/dotenv";
 
-loadEnv(undefined, { precedence: "process-wins" });
+loadEnv(); // "process-wins" is the default
 
 // DATABASE_URL injected by the platform → the .env line is ignored (not even parsed or interpolated).
 // APP_NAME only in .env                 → the file value is used.
@@ -460,7 +463,7 @@ env("APP_NAME");     // the file value
 Pair it with `override: false` if you also want `process.env` left completely untouched for keys the file *does* own:
 
 ```ts
-loadEnv(undefined, { precedence: "process-wins", override: false });
+loadEnv(undefined, { override: false });
 
 process.env.APP_PORT; // whatever the orchestrator set (or undefined)
 env("APP_PORT");      // typed value — injected if present, else from the file
@@ -503,8 +506,9 @@ it("reads APP_PORT as 3000", () => {
 | Some integers beyond `Number.MAX_SAFE_INTEGER` that happened to round-trip (such as `9007199254740992`) became numbers. | Every integer beyond it stays a string. |
 | `{ dir: undefined }` and similar options overrode the defaults. | An explicit `undefined` means "use the default". |
 | A file that threw halfway left its earlier keys loaded. | Files load atomically. |
+| Default `precedence` was `"file-wins"`: the file replaced a value already in `process.env`. | Default is `"process-wins"`: the injected value is kept. To keep the 1.x behaviour, call `loadEnv(path, { precedence: "file-wins" })`. |
 
-Unchanged: the default `precedence` is still `"file-wins"`. Also new: keys you set directly on `process.env` after import survive `resetEnv()` even if the loader later wrote the same key.
+Also new: keys you set directly on `process.env` after import survive `resetEnv()` even if the loader later wrote the same key.
 
 ---
 

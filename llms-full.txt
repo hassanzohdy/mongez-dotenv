@@ -42,7 +42,7 @@ type EnvLoaderOptions = {
   override?: boolean;          // default true — also write into process.env
   dir?: string;                // default cwd(), read on every call — search root for .env files
   loadSharedEnv?: boolean;     // default true — load .env.shared first
-  precedence?: EnvPrecedence;  // default "file-wins" — who wins vs process.env
+  precedence?: EnvPrecedence;  // default "process-wins" (since 2.0) — who wins vs process.env
 };
 ```
 
@@ -65,17 +65,20 @@ A path passed explicitly as `envPath` is different: a missing one still throws, 
 
 | Value | Behaviour |
 |---|---|
-| `"file-wins"` (default) | The file value replaces the injected one, in the internal store and (when `override`) in `process.env` itself. |
-| `"process-wins"` | An already-set `process.env` value is authoritative: the file does not replace it in the store and does not write over it. The file becomes a fallback layer. |
+| `"file-wins"` | The file value replaces the injected one, in the internal store and (when `override`) in `process.env` itself. |
+| `"process-wins"` (default since 2.0) | An already-set `process.env` value is authoritative: the file does not replace it in the store and does not write over it. The file becomes a fallback layer. |
 
 ```ts
-// Docker / Kubernetes / CI — the platform owns the environment.
-loadEnv(undefined, { precedence: "process-wins" });
+// Default: the platform owns the environment (Docker / Kubernetes / CI).
+loadEnv();
+
+// 1.x behaviour: the file overwrites injected values.
+loadEnv(undefined, { precedence: "file-wins" });
 ```
 
 Notes:
 
-- `"file-wins"` is the historical behaviour and is still the default in 2.0.0. Select `"process-wins"` explicitly to match `dotenv`, `dotenv-flow`, Vite and Next.
+- `"process-wins"` is the default since 2.0, matching `dotenv`, `dotenv-flow`, Vite and Next. `"file-wins"` was the 1.x default; pass it explicitly to keep that behaviour.
 - Under `"process-wins"` the key is checked before the value is parsed: a line for a process-provided key is not parsed or interpolated at all, so an unresolvable `${VAR}` on that line cannot throw.
 - Keys the loader itself wrote earlier in the same run (`.env.shared`, or a previous `loadEnvFile`) are tracked in an internal `Set` and are NOT mistaken for platform-injected values, so file layering keeps working under `"process-wins"`.
 - A value taken from `process.env` is coerced to a primitive the same way a file value is (`"8080"` → `8080`), but WITHOUT quote stripping or `${VAR}` interpolation, and values with significant leading/trailing whitespace are left untouched.
@@ -86,7 +89,7 @@ Notes:
 function loadEnvFile(
   envPath: string,
   override: boolean,
-  precedence?: EnvPrecedence,   // default "file-wins"
+  precedence?: EnvPrecedence,   // default "process-wins"
 ): void
 ```
 
@@ -268,13 +271,13 @@ Override only affects `process.env`. The internal store is populated either way.
 process.env.APP_HOST = "injected-host";   // e.g. Kubernetes
 // .env contains: APP_HOST=localhost
 
-loadEnv();                                            // precedence: "file-wins" (default)
-env("APP_HOST");                                      // "localhost"      — the file won
-process.env.APP_HOST;                                 // "localhost"      — overwritten
-
-loadEnv(undefined, { precedence: "process-wins" });
+loadEnv();                                            // precedence: "process-wins" (default)
 env("APP_HOST");                                      // "injected-host"  — the platform won
 process.env.APP_HOST;                                 // "injected-host"  — left intact
+
+loadEnv(undefined, { precedence: "file-wins" });
+env("APP_HOST");                                      // "localhost"      — the file won
+process.env.APP_HOST;                                 // "localhost"      — overwritten
 ```
 
 Keys the file declares that the environment does NOT provide are loaded normally under both settings.
@@ -285,7 +288,7 @@ Keys the file declares that the environment does NOT provide are loaded normally
 - **Forward references are unsupported.** `A=${B}` with `B` declared on a later line throws; declare `B` first (or in `.env.shared`, or in `process.env`).
 - **Numeric coercion requires an exact round trip within the safe-integer range.** Identifier-shaped values (`0123456789`, `0x1F`, `1e5`, `+1555…`, every integer past `MAX_SAFE_INTEGER`) stay strings from both sources. Quoting still works in a `.env` file as an explicit opt-out.
 - **`env.all()` returns the store by reference** — mutating the returned object mutates the store.
-- **The default `precedence` is `"file-wins"`**, which lets a baked-in `.env` file override platform-injected variables. Pass `"process-wins"` in containers.
+- **`precedence: "file-wins"` lets a baked-in `.env` file override platform-injected variables.** It is opt-in since 2.0 (the default is `"process-wins"`); avoid it in containers.
 
 The 2026-11-15 review findings (parsing of quotes, comments, `export`, multiline values, interpolation, atomic loads, `resetEnv`, option merging) are pinned in `src/__tests__/review-2026-11.test.ts`. The four defects documented in `src/__tests__/known-bugs.test.ts` (the `null` collapse, the quoted-`#`-with-comment mis-trim, the double `parseValue` call, and `resetEnv` leaving keys behind) were all fixed in 1.2.4; that file now pins the corrected behaviour. The four defects from the 2026-08-10 report are covered in `src/__tests__/process-env.test.ts`.
 
@@ -340,7 +343,7 @@ loadEnvFile("/etc/myapp/secrets.env", /* override */ false);
 ```ts
 import { loadEnv, env } from "@mongez/dotenv";
 
-loadEnv(undefined, { precedence: "process-wins" });
+loadEnv(); // process-wins is the default
 
 env("DATABASE_URL");  // the value the platform injected, not the baked-in .env line
 env("APP_NAME");      // from .env — the platform does not set it

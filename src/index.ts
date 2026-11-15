@@ -43,14 +43,15 @@ const previousProcessValues = new Map<string, string | undefined>();
  * Which side wins when a key is present in BOTH a .env file and the real
  * process environment.
  *
+ * - `process-wins` (the default since 2.0) — an already-set `process.env`
+ *   value is authoritative and the .env file acts as a fallback layer
+ *   underneath it. This matches dotenv, dotenv-flow, Vite and Next, and is
+ *   the right behaviour for Docker / Kubernetes / CI, where the platform owns
+ *   the environment and the `.env` file is usually just the one baked into
+ *   the image.
  * - `file-wins` — the .env file value replaces whatever the platform
- *   injected. This is the historical behaviour and is still the default in
- *   2.0, so no deployment changes on upgrade.
- * - `process-wins` — an already-set `process.env` value is authoritative
- *   and the .env file acts as a fallback layer underneath it. This matches
- *   dotenv, dotenv-flow, Vite and Next, and is the correct setting for
- *   Docker / Kubernetes / CI, where the platform owns the environment and
- *   the `.env` file is usually just the one baked into the image.
+ *   injected. This was the 1.x default; pass it explicitly to keep that
+ *   behaviour.
  */
 export type EnvPrecedence = "file-wins" | "process-wins";
 
@@ -492,7 +493,7 @@ export function loadEnv(envPath?: string, envOptions?: EnvLoaderOptions) {
     override: envOptions?.override ?? true,
     dir: envOptions?.dir || cwd(),
     loadSharedEnv: envOptions?.loadSharedEnv ?? true,
-    precedence: envOptions?.precedence ?? ("file-wins" as EnvPrecedence),
+    precedence: envOptions?.precedence ?? ("process-wins" as EnvPrecedence),
   };
 
   assertNoTraversal(options.dir, "dir");
@@ -535,7 +536,7 @@ export function loadEnv(envPath?: string, envOptions?: EnvLoaderOptions) {
 export function loadEnvFile(
   envPath: string,
   override: boolean,
-  precedence: EnvPrecedence = "file-wins"
+  precedence: EnvPrecedence = "process-wins"
 ) {
   assertNoTraversal(envPath, "envPath");
 

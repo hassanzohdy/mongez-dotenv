@@ -2,10 +2,11 @@
 
 ## [2.0.0] — Unreleased
 
-The `.env` grammar now follows `dotenv` / shell conventions, and the loader is atomic. Several lines that 1.x read differently now parse the way the docs always described. Check the **Breaking** list against your files before upgrading. `precedence` still defaults to `"file-wins"`.
+The `.env` grammar now follows `dotenv` / shell conventions, and the loader is atomic. Several lines that 1.x read differently now parse the way the docs always described. Check the **Breaking** list against your files before upgrading, starting with the new default `precedence`.
 
 ### Breaking
 
+- **`precedence` now defaults to `"process-wins"`**, as the 1.x docs announced for 2.0. A value already in `process.env` (injected by Docker, Kubernetes, CI or your shell) now wins over the same key in a `.env` file, matching `dotenv`, `dotenv-flow`, Vite and Next. The file still fills in every key the environment does not set. To keep the 1.x behaviour, pass it explicitly: `loadEnv(path, { precedence: "file-wins" })`.
 - **Single-quoted values are literal.** `GREETING='Hello ${name}'` is the text `Hello ${name}`. 1.x interpolated it, and threw when `name` was undefined. Only `\'` is unescaped inside single quotes.
 - **Double-quoted values expand escapes:** `\n`, `\r`, `\t`, `\"`, `\\` and `\$`. A Windows path like `"C:\new"` now contains a newline. Write `"C:\\new"` or use single quotes. Backtick values expand `` \` ``, `\\` and `\$` (not `\n` / `\r` / `\t`); a backslash before any other character is kept as written.
 - **Inline comments after unquoted values are removed** ([#1](https://github.com/hassanzohdy/mongez-dotenv/issues/1)). `DEBUG=true # debug mode` is now the boolean `true`, and `APP_PORT=3000 # http port` is the number `3000`. 1.x returned the strings with the comment included. A comment starts at the first `#` preceded by whitespace, so `COLOR=#fff` and `URL=https://x.com/#frag` keep their `#`. The whitespace after the `=` counts: `KEY= # note` is the empty string.

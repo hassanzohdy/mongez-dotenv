@@ -202,7 +202,7 @@ describe("C5 process-wins decides on the key before parsing the value", () => {
     process.env.C5_KEY = "7";
 
     expect(() =>
-      loadEnvFile(path.join(FIXTURES, ".env.c5-process-wins"), true)
+      loadEnvFile(path.join(FIXTURES, ".env.c5-process-wins"), true, "file-wins")
     ).toThrow(/C5_REFERENCE_DEFINED_NOWHERE/);
   });
 });
@@ -310,7 +310,7 @@ describe("C9 explicit undefined options mean the default", () => {
 
     expect(process.env.APP_TEST).toBe("true"); // override -> true
     expect(env("APP_NAME")).toBe("Hello"); // loadSharedEnv -> true
-    expect(env("APP_HOST")).toBe("localhost"); // precedence -> "file-wins"
+    expect(env("APP_HOST")).toBe("platform"); // precedence -> "process-wins"
   });
 
   it("`dir: undefined` means the current working directory", () => {
@@ -404,7 +404,7 @@ describe("C13 resetEnv() keeps variables the caller set directly", () => {
     // Set AFTER import, so it is not in the import-time snapshot.
     process.env.C13_KEY = "mine";
 
-    loadEnvFile(path.join(FIXTURES, ".env.c13"), true);
+    loadEnvFile(path.join(FIXTURES, ".env.c13"), true, "file-wins");
     expect(process.env.C13_KEY).toBe("from-file");
 
     resetEnv();
@@ -415,8 +415,8 @@ describe("C13 resetEnv() keeps variables the caller set directly", () => {
   it("remembers the value from before the FIRST loader write, not a later one", () => {
     process.env.C13_KEY = "mine";
 
-    loadEnvFile(path.join(FIXTURES, ".env.c13"), true);
-    loadEnvFile(path.join(FIXTURES, ".env.c13"), true);
+    loadEnvFile(path.join(FIXTURES, ".env.c13"), true, "file-wins");
+    loadEnvFile(path.join(FIXTURES, ".env.c13"), true, "file-wins");
     resetEnv();
 
     expect(process.env.C13_KEY).toBe("mine");
@@ -429,7 +429,7 @@ describe("C13 resetEnv() keeps variables the caller set directly", () => {
     const fresh = await import("../index");
 
     process.env.C13_KEY = "mine";
-    fresh.loadEnvFile(path.join(FIXTURES, ".env.c13"), true);
+    fresh.loadEnvFile(path.join(FIXTURES, ".env.c13"), true, "file-wins");
     fresh.resetEnv();
 
     expect(process.env.C13_KEY).toBe("snapshot");
@@ -438,7 +438,7 @@ describe("C13 resetEnv() keeps variables the caller set directly", () => {
   it("still deletes a key that was absent before the loader wrote it", () => {
     delete process.env.C13_KEY;
 
-    loadEnvFile(path.join(FIXTURES, ".env.c13"), true);
+    loadEnvFile(path.join(FIXTURES, ".env.c13"), true, "file-wins");
     resetEnv();
 
     expect(process.env.C13_KEY).toBeUndefined();
@@ -489,5 +489,25 @@ describe("C15 stray quotes after the closing quote", () => {
 
   it("is not fooled by an apostrophe in a comment after a single-quoted value", () => {
     expect(parseValue("'a' # don't")).toBe("a");
+  });
+});
+
+describe("2.0 default precedence", () => {
+  it("loadEnv() keeps a process.env value over the file's; `file-wins` still overrides it", () => {
+    delete process.env.NODE_ENV;
+    process.env.APP_HOST = "platform";
+
+    loadEnv(undefined, { dir: FIXTURES });
+
+    expect(env("APP_HOST")).toBe("platform");
+    expect(process.env.APP_HOST).toBe("platform");
+
+    resetEnv();
+    process.env.APP_HOST = "platform";
+
+    loadEnv(undefined, { dir: FIXTURES, precedence: "file-wins" });
+
+    expect(env("APP_HOST")).toBe("localhost");
+    expect(process.env.APP_HOST).toBe("localhost");
   });
 });
