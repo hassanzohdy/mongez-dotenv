@@ -68,10 +68,10 @@ Boot once at process start, then read typed values from anywhere. `env()` return
 |---|---|---|
 | Internal store | Module-level `envData` object | The typed view of every loaded key. Read via `env()` / `env.all()`. |
 | `process.env` mirror | Real Node `process.env` | Optional write-through, controlled by `override`. Always stores strings. |
-| Initial snapshot | Module-level `initialProcessEnvData` | Captured at first import. `resetEnv` restores keys from this snapshot. |
+| Initial snapshot | Module-level `initialProcessEnvData` | Captured at first import. `resetEnv` restores `process.env` from this snapshot; it does not copy it into the store. |
 | Precedence | `precedence` option | Who wins when a key is in both the file and `process.env`. `"file-wins"` (default) or `"process-wins"`. |
 
-The loader is **stateful and module-scoped**. One store per Node process. Calling `loadEnv` twice merges the second file's keys into the first store rather than starting over.
+The loader is **stateful and module-scoped**. One store per Node process. Calling `loadEnv` twice merges the second file's keys into the first store rather than starting over. Each file is loaded atomically: it is parsed completely first, and a file that throws leaves the store and `process.env` untouched.
 
 `env(key)` reads **store → `process.env` → default**, so a platform-injected variable that no file names is still visible.
 
@@ -86,9 +86,11 @@ The loader is **stateful and module-scoped**. One store per Node process. Callin
 ## Quirks worth knowing
 
 1. **`process.env` always stringifies.** Even though the package writes `process.env.PORT = 3000`, Node's `process.env` setter coerces to `"3000"`. Use `env()` for the typed value.
-2. **`${VAR}` is parse-time only.** Substitutions happen the moment the value is parsed. Later updates to the referenced key do not re-trigger substitution in earlier lines. Forward references (declaring the key later in the same file) are unsupported and throw.
-3. **The default precedence is `"file-wins"`, which is the deployment hazard.** A `.env` file baked into a container image replaces the `DATABASE_URL` / port / secret the platform injected. Pass `precedence: "process-wins"` in containerised environments. **v2.0 flips the default.**
-4. **`env.all()` is the file store only** — it is not merged with `process.env`. The fallback lives in `env(key)`.
+2. **`${NAME}` is parse-time only.** Substitutions happen the moment the value is parsed. Later updates to the referenced key do not re-trigger substitution in earlier lines. Forward references (declaring the key later in the same file) are unsupported and throw. Only a well-formed name (`[A-Za-z_][A-Za-z0-9_.-]*`) is a reference; other `${...}` text stays literal, and single-quoted values are never interpolated.
+3. **The default precedence is `"file-wins"`, which is the deployment hazard.** A `.env` file baked into a container image replaces the `DATABASE_URL` / port / secret the platform injected. Pass `precedence: "process-wins"` in containerised environments. The default is still `"file-wins"` in 2.0.
+4. **`env.all()` is the file store only** — it is not merged with `process.env`, and it is `{}` after `resetEnv()`. The fallback lives in `env(key)`.
+5. **The `.env` grammar is dotenv-like.** `export KEY=v` and `KEY = v` work, lines with an invalid key are skipped, unquoted values accept inline comments (`#` preceded by whitespace; `COLOR=#fff` is kept), and quoted values may span lines. See the parser page.
+6. **Explicit `undefined` options mean defaults**, `process.cwd()` is read on every `loadEnv` call, and with `NODE_ENV` unset or empty the loader goes straight to `.env`.
 
 ## Where to go next
 

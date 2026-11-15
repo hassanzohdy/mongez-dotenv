@@ -125,14 +125,14 @@ import { loadEnv, env } from "@mongez/dotenv";
 
 loadEnv(undefined, { precedence: "process-wins" });
 
-// DATABASE_URL injected by the platform → the .env line is ignored,
-//                                         and process.env is left intact.
+// DATABASE_URL injected by the platform → the .env line is ignored (not even
+//                                         parsed or interpolated), process.env is left intact.
 // APP_NAME only in .env                 → the file value is used.
 env("DATABASE_URL");
 env("APP_NAME");
 ```
 
-Reach for this in any containerised deploy. The default, `"file-wins"`, means a `.env` file baked into the image silently overwrites what the platform injected — the exact inversion of what `dotenv`, `dotenv-flow`, Vite and Next do. It stays the default for all of v1.x so a minor bump never changes what a running deployment reads; **v2.0 flips it**.
+Reach for this in any containerised deploy. The default, `"file-wins"`, means a `.env` file baked into the image silently overwrites what the platform injected — the exact inversion of what `dotenv`, `dotenv-flow`, Vite and Next do. It is still the default so upgrading never changes what a running deployment reads; pass `"process-wins"` explicitly.
 
 Combine with `override: false` when `process.env` should also be left untouched for the keys the file does own:
 
@@ -168,7 +168,7 @@ loadEnv("/etc/myapp/secrets.env");  // throws if absent — you named it
 
 ## Distinguishing a loaded `null` from a missing key
 
-`env(key)` preserves a deliberately-loaded `null` (it checks `key in envData` rather than `??`), so the loaded value passes through directly:
+`env(key)` preserves a deliberately-loaded `null` (it checks the store's own keys rather than using `??`), so the loaded value passes through directly:
 
 ```ts
 import { env } from "@mongez/dotenv";
@@ -182,7 +182,7 @@ env("MISSING", "fallback");      // "fallback"
 
 ## Reset in tests
 
-`resetEnv` clears the internal store, deletes any `process.env` keys that the loader wrote since module load, and re-applies the import-time snapshot — so a single call is enough to undo a `loadEnv` between tests:
+`resetEnv` empties the internal store (`env.all()` is `{}`), puts back every `process.env` key the loader wrote since module load, and re-applies the import-time snapshot — so a single call is enough to undo a `loadEnv` between tests:
 
 ```ts
 import { afterEach } from "vitest";
@@ -193,11 +193,11 @@ afterEach(() => {
 });
 ```
 
-Keys that the test sets directly on `process.env` (without going through `loadEnv` / `loadEnvFile`) are not tracked by the loader and survive the reset — manage those yourself if needed.
+A key the test sets directly on `process.env` survives the reset, even if the loader also wrote that key: the reset puts back the value the loader found when it first wrote the key, so your later assignment is kept. Clean up what you set yourself if the next test should not see it.
 
-## Quoted values with `#`
+## Quotes, comments and multiline values
 
-The parser is quote-aware: when a value opens with `"`, `'`, or `` ` ``, the matching closing quote is the last occurrence of that same character, and anything after it (whitespace + a `# comment`) is discarded.
+The parser is quote-aware. When a value opens with `"`, `'`, or `` ` ``, the closing quote is the **first** occurrence of that character that is not escaped by a backslash, and anything after it (whitespace + a `# comment`) is discarded.
 
 ```bash
 # Fully-quoted, contains #, no trailing comment
@@ -206,8 +206,38 @@ DB_PASS="AMFSDF#QWEWQE"
 
 # Fully-quoted, contains #, with a trailing comment
 HTTP_URL2="https://${HOST}#fragment" # some comment
-#   → "https://example.com#fragment"
+#   → "https://example.com#fragment"   (HOST=example.com)
 
-# Unquoted, no # — trailing comment is fine
-APP_NAME=My App
+# Unquoted with a real trailing comment: ` #` starts it, and it is stripped
+APP_NAME=My App # shown in the title bar
+#   → "My App"
+
+# A # with no whitespace before it is part of the value
+COLOR=#fff
+#   → "#fff"
 ```
+
+Quote kinds differ:
+
+```bash
+LITERAL='costs ${PRICE}'          # single quotes: literal, no interpolation → costs ${PRICE}
+LINES="one\ntwo"                  # double quotes: \n expands → a real newline
+ESCAPED="price: \$5, ref \${X}"   # \$ is a literal $ → price: $5, ref ${X}
+TICKS=`path\nname ${HOST}`        # backticks: interpolate, but \n stays backslash + n
+```
+
+A `${...}` whose content is not a valid name (`${not a name}`) stays literal text instead of throwing. `export APP_PORT=3000` and `APP_PORT = 3000` are accepted, and a line with an invalid key (`1BAD=x`) is skipped.
+
+### Multiline values (PEM keys)
+
+```bash
+PRIVATE_KEY="-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASC...
+-----END PRIVATE KEY-----"
+```
+
+```ts
+env("PRIVATE_KEY"); // "-----BEGIN PRIVATE KEY-----\nMIIEvQ...\n-----END PRIVATE KEY-----"
+```
+
+If the closing quote never appears, the file throws `Unterminated "-quoted value for PRIVATE_KEY starting at line 1 of /path/.env` and nothing from that file is loaded (the store and `process.env` stay untouched), so a typo fails at boot instead of silently swallowing the rest of the file.

@@ -27,11 +27,13 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // resetEnv() first: it puts each loader-written key back to the value it had
+  // before that write, so running it after the baseline restore could undo it.
+  resetEnv();
   for (const k of TOUCHED_KEYS) {
     if (baseline[k] === undefined) delete process.env[k];
     else process.env[k] = baseline[k] as string;
   }
-  resetEnv();
 });
 
 describe("loadEnvFile", () => {
@@ -53,8 +55,8 @@ describe("loadEnvFile", () => {
     expect(env("APP_PORT")).toBe(3000);
     expect(env("DEBUG")).toBe(true);
     expect(env("PRODUCTION")).toBe(false);
-    // env() preserves a deliberately-loaded JS null (uses `key in envData`
-    // rather than `??`); env.all() exposes the same value.
+    // env() preserves a deliberately-loaded JS null (an own-key check on the
+    // store rather than `??`); env.all() exposes the same value.
     expect(env("EST_TIME")).toBeNull();
     expect(env.all().EST_TIME).toBeNull();
   });

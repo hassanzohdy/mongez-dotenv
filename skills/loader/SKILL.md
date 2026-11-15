@@ -23,7 +23,7 @@ type EnvPrecedence = "file-wins" | "process-wins";
 
 type EnvLoaderOptions = {
   override?: boolean;           // default true — also write into process.env
-  dir?: string;                 // default cwd() — search root
+  dir?: string;                 // default cwd() (read on every call) — search root
   loadSharedEnv?: boolean;      // default true — load .env.shared first
   precedence?: EnvPrecedence;   // default "file-wins" — who wins vs process.env
 };
@@ -32,8 +32,8 @@ type EnvLoaderOptions = {
 ## File resolution (when `envPath` is omitted)
 
 1. If `loadSharedEnv` is `true` and `${dir}/.env.shared` exists, load it first.
-2. Try `${dir}/.env.${process.env.NODE_ENV}` (e.g. `.env.development`).
-3. If that file does not exist, fall back to `${dir}/.env`.
+2. If `NODE_ENV` is set and non-empty, try `${dir}/.env.${process.env.NODE_ENV}` (e.g. `.env.development`).
+3. If that file does not exist, or `NODE_ENV` is unset or empty (no `.env.<NODE_ENV>` is probed then), fall back to `${dir}/.env`.
 4. If that does not exist either, do nothing — no throw. A project with no `.env` at all is a supported state.
 
 ```ts
@@ -58,21 +58,25 @@ loadEnv("/etc/secrets.env");    // explicit path skips the resolver,
 
 An explicitly-passed `envPath` that does not exist still throws — the caller named it, so a typo must be loud. Only the paths `loadEnv` derives for itself (steps 2–3 above) are optional.
 
-`dir` and `envPath` are also rejected outright when they contain a `..` segment, so a value derived from config or a CLI flag can't walk the loader outside its intended directory and pull an unrelated file into `process.env`. Absolute paths are still accepted — passing one is the caller explicitly naming that file.
+`dir` and `envPath` are also rejected outright when they contain a `..` segment, so a value derived from config or a CLI flag can't walk the loader outside its intended directory and pull an unrelated file into `process.env`. Absolute paths are accepted unless they contain a `..` segment; relative paths with `..` such as `../config` are rejected too (use `path.resolve(__dirname, "../config")`). The check runs on the resolved `dir`.
+
+## Options merge and `cwd()`
+
+Options are merged field by field, and an explicit `undefined` means "use the default": `{ dir: undefined }` searches `cwd()`, `{ override: undefined }` is `true`, `{ loadSharedEnv: undefined }` is `true`, `{ precedence: undefined }` is `"file-wins"`. An empty `dir: ""` also means `cwd()`. `process.cwd()` is resolved on every `loadEnv` call, not once at import, so `process.chdir()` before the call is honoured.
 
 ## Precedence semantics — file vs. the real environment
 
 | Setting | A key in BOTH the file and `process.env` |
 |---|---|
 | `precedence: "file-wins"` (default) | The file value replaces the injected one, in the store and (when `override`) in `process.env`. |
-| `precedence: "process-wins"` | The injected value is authoritative. The file does not replace it in the store and does not write over it. |
+| `precedence: "process-wins"` | The injected value is authoritative. The file does not replace it in the store and does not write over it. The decision is made on the key before the value is parsed, so the file's line for that key is never interpolated and cannot throw. |
 
 ```ts
 // Docker / Kubernetes / CI: the platform owns the environment.
 loadEnv(undefined, { precedence: "process-wins" });
 ```
 
-- `"file-wins"` stays the default for the whole v1.x line so a minor bump never changes what a running deployment reads. **v2.0 flips the default to `"process-wins"`.**
+- `"file-wins"` is still the default, so upgrading never changes what a running deployment reads. Select `"process-wins"` explicitly for containerised deploys.
 - Keys the loader itself wrote earlier in the same run (`.env.shared`, or a previous `loadEnvFile`) are tracked in an internal `Set` and are NOT mistaken for platform-injected values — file layering keeps working under `"process-wins"`.
 - Values taken from `process.env` are coerced to primitives the same way file values are (`"8080"` → `8080`), but WITHOUT quote stripping or `${VAR}` interpolation.
 
@@ -126,6 +130,8 @@ Loads exactly one file. Always throws if the path does not exist — it is the p
 Error: .env file not found at /abs/path/to/.env
 ```
 
+A file loads **atomically**: it is parsed completely into a temporary ordered map first (the lookup for `${NAME}` references to earlier keys of the same file), and only when the whole file parsed without error are its keys written to the store, `process.env` and the tracked-keys set. A file that throws (an unterminated multiline quote, an unresolvable `${NAME}`) leaves the store and `process.env` exactly as they were. See `parser.md` for the line grammar.
+
 Use this when you need to load a file outside the standard resolution chain (e.g. a `secrets.env` somewhere on disk, deferred loading, multiple env files at different paths).
 
 ## `resetEnv`
@@ -136,11 +142,11 @@ resetEnv();
 
 Does:
 
-1. Clears every key from the internal store.
-2. Deletes any `process.env` keys that `loadEnvFile` wrote since module load (tracked internally in a `Set`).
+1. Empties the internal store. The import-time snapshot is **not** copied into it, so `env.all()` is `{}` afterwards and `env("PORT")` falls through to `process.env` (with coercion), e.g. `3000` as a number.
+2. Puts every `process.env` key the loader wrote back to the value it had before the loader first wrote it (deleting the key if it was absent). The previous value is remembered on the first write of each key.
 3. Re-assigns every key in the import-time `process.env` snapshot back to `process.env`.
 
-The net effect is a true "back to t0" for anything the loader added. Keys that callers set directly on `process.env` (without going through `loadEnv` / `loadEnvFile`) are not tracked and survive the reset — the caller owns their own additions.
+The net effect is a "back to t0" for anything the loader added. A variable the caller set directly on `process.env` after import survives the reset, even when the loader also wrote the same key later: step 2 restores the value the loader found, not the import-time one.
 
 ## Common loading patterns
 

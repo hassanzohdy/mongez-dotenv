@@ -78,10 +78,12 @@ describe("parseLine — escapes inside quoted values", () => {
     expect(value).toBe('Hello "world"');
   });
 
-  it("keeps a trailing escaped quote and treats it as one literal `\"`", () => {
+  it("closes at the first unescaped quote and discards a stray trailing `\"` (C15)", () => {
+    // 1.x closed at the LAST quote and kept the stray one (`Mongez"`). The
+    // closing quote is now the first unescaped one; the rest is discarded.
     const [key, value] = parseLine('APP_NAME="Mongez""');
     expect(key).toBe("APP_NAME");
-    expect(value).toBe('Mongez"');
+    expect(value).toBe("Mongez");
   });
 });
 

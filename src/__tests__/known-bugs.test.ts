@@ -17,7 +17,7 @@ describe("previously-known bugs (now fixed)", () => {
   /**
    * src/index.ts env() — uses `??` which swallows `null`.
    *
-   * Fixed: env() now uses `key in envData` so a deliberately-loaded `null`
+   * Fixed: env() now checks the store's own keys so a deliberately-loaded `null`
    * is preserved and distinguishable from a missing key.
    */
   it("env() returns null when the loaded value is null", () => {

@@ -50,11 +50,15 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // resetEnv() first: it puts each key the loader wrote back to the value it had
+  // before that write, which includes values a test injected directly. The
+  // baseline restore must run after it, or those injected values leak into the
+  // next test.
+  resetEnv();
   for (const k of TOUCHED_KEYS) {
     if (baseline[k] === undefined) delete process.env[k];
     else process.env[k] = baseline[k] as string;
   }
-  resetEnv();
 });
 
 describe("D1 — precedence between the file and the real environment", () => {

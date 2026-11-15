@@ -48,11 +48,13 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // resetEnv() first: it puts each loader-written key back to the value it had
+  // before that write, so running it after the baseline restore could undo it.
+  resetEnv();
   for (const k of TOUCHED_KEYS) {
     if (baseline[k] === undefined) delete process.env[k];
     else process.env[k] = baseline[k] as string;
   }
-  resetEnv();
 });
 
 describe("numeric coercion — values that must stay strings", () => {

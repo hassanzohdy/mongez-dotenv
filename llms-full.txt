@@ -40,7 +40,7 @@ type EnvPrecedence = "file-wins" | "process-wins";
 
 type EnvLoaderOptions = {
   override?: boolean;          // default true — also write into process.env
-  dir?: string;                // default cwd() — search root for .env files
+  dir?: string;                // default cwd(), read on every call — search root for .env files
   loadSharedEnv?: boolean;     // default true — load .env.shared first
   precedence?: EnvPrecedence;  // default "file-wins" — who wins vs process.env
 };
@@ -49,9 +49,11 @@ type EnvLoaderOptions = {
 Resolution order when `envPath` is omitted:
 
 1. If `loadSharedEnv` is true (default) and `${dir}/.env.shared` exists, load it.
-2. Try `${dir}/.env.${process.env.NODE_ENV}`. If it exists, load it.
+2. If `NODE_ENV` is set and non-empty, try `${dir}/.env.${process.env.NODE_ENV}`. If it exists, load it.
 3. Otherwise load `${dir}/.env`.
 4. If that does not exist either, do nothing. A project with no `.env` of any kind is a supported state — no throw.
+
+Options merge field by field: an option passed as `undefined` means its default (`{ dir: process.env.CONFIG_DIR }` with the variable unset searches `cwd()`); an empty `dir: ""` also means `cwd()`. `dir` and `envPath` containing a `..` segment are rejected, absolute or relative (`../config` too); absolute paths without `..` are accepted.
 
 A path passed explicitly as `envPath` is different: a missing one still throws, because the caller named it and a typo must be loud. Only the paths `loadEnv` derives for itself are optional.
 
@@ -73,7 +75,8 @@ loadEnv(undefined, { precedence: "process-wins" });
 
 Notes:
 
-- `"file-wins"` is the historical behaviour and stays the default for all of v1.x so a minor bump never changes what a running deployment reads. **v2.0 flips the default to `"process-wins"`**, matching `dotenv`, `dotenv-flow`, Vite and Next.
+- `"file-wins"` is the historical behaviour and is still the default in 2.0.0. Select `"process-wins"` explicitly to match `dotenv`, `dotenv-flow`, Vite and Next.
+- Under `"process-wins"` the key is checked before the value is parsed: a line for a process-provided key is not parsed or interpolated at all, so an unresolvable `${VAR}` on that line cannot throw.
 - Keys the loader itself wrote earlier in the same run (`.env.shared`, or a previous `loadEnvFile`) are tracked in an internal `Set` and are NOT mistaken for platform-injected values, so file layering keeps working under `"process-wins"`.
 - A value taken from `process.env` is coerced to a primitive the same way a file value is (`"8080"` → `8080`), but WITHOUT quote stripping or `${VAR}` interpolation, and values with significant leading/trailing whitespace are left untouched.
 
@@ -106,8 +109,9 @@ Returns `[]` for:
 - Empty / whitespace-only lines
 - Lines starting with `#` (comments)
 - Lines without an `=`
+- Lines whose key does not match `/^[A-Za-z_][A-Za-z0-9_.-]*$/`
 
-Otherwise returns `[key, parseValue(rhs)]`. The right-hand side is split on the FIRST `=`; the remainder is joined back together, so `KEY=a=b` yields `["KEY", "a=b"]`.
+Otherwise returns `[key, value]`. An `export ` prefix is removed, the key is trimmed (`APP_PORT = 3000` gives `["APP_PORT", 3000]`), and the value is split on the FIRST `=`, so `KEY=a=b` yields `["KEY", "a=b"]`. The value follows the file-format rules below. On an unterminated quote `parseLine` / `parseValue` return the raw text instead of throwing; only the file loader throws.
 
 ## parseValue(value)
 
@@ -124,6 +128,7 @@ Coercion table:
 | `"-7"` | `-7` (number) |
 | `"0123456789"` | `"0123456789"` (string — leading zero would be lost) |
 | `"1234567890123456789"` | string (beyond MAX_SAFE_INTEGER) |
+| `"1234567890123456000"` | string (beyond MAX_SAFE_INTEGER, even though it round-trips) |
 | `"0x1F"` | `"0x1F"` (string — would become 31) |
 | `"1e5"` | `"1e5"` (string — would become 100000) |
 | `"+15551234567"` | `"+15551234567"` (string — `+` would be stripped) |
@@ -135,14 +140,16 @@ Coercion table:
 | `"My App"` | `"My App"` (string) |
 | `'"3000"'` | `"3000"` (string — quotes opt out of coercion) |
 | `'"a \\"b\\" c"'` | `'a "b" c'` (string — `\"` unescaped) |
+| `"false # off"` | `false` (boolean — inline comment removed first) |
+| `"#fff"` | `"#fff"` (string — `#` not preceded by whitespace is data) |
 | `""` | `""` (empty string passes through) |
 | `undefined` | `undefined` |
 
 `true` / `false` / `null` are case-sensitive. `True`, `YES`, `1` stay as strings.
 
-Numeric coercion requires an EXACT ROUND TRIP — `isNumeric` is `Number.isFinite(n) && String(n) === value`, not `!isNaN(value)`. A value becomes a number only when converting it back yields the original characters, so nothing that would lose information is converted. The same rule applies to `process.env` values: in a `.env` file an author can opt out by quoting, but a platform-injected value is never quote-stripped, so the operator has no opt-out — and injected secrets, account IDs and tokens are exactly the values that look numeric.
+Numeric coercion requires an EXACT ROUND TRIP within the safe-integer range — `isNumeric` is `Number.isFinite(n) && String(n) === value && Math.abs(n) <= Number.MAX_SAFE_INTEGER`, not `!isNaN(value)`. A value becomes a number only when converting it back yields the original characters, so nothing that would lose information is converted. The same rule applies to `process.env` values: in a `.env` file an author can opt out by quoting, but a platform-injected value is never quote-stripped, so the operator has no opt-out — and injected secrets, account IDs and tokens are exactly the values that look numeric.
 
-`${VAR}` is resolved at parse time against the internal store first, then `process.env`. A reference that resolves in NEITHER place throws, naming the key:
+`${NAME}` (NAME matching `[A-Za-z_][A-Za-z0-9_.-]*`, optional spaces inside the braces) is resolved at parse time: keys parsed earlier in the same file first, then the internal store, then `process.env`. Text like `${not a name}` stays literal. `\$` gives a literal `$` (so `\${X}` stays `${X}`), single-quoted values and comments are never interpolated, and substitution happens after quotes are parsed, so a substituted value can never become quote or comment syntax. A valid reference that resolves nowhere throws, naming the key:
 
 ```ts
 parseValue("prefix:${NOT_DEFINED}:suffix");
@@ -174,13 +181,13 @@ env("MISSING", 0);        // 0
 env.all();                // { APP_PORT: 3000, ... }  (by reference — do not mutate)
 ```
 
-`env` uses `key in envData` (not `??`), so a deliberately-loaded `null` is preserved and distinguishable from a missing key: with `EST_TIME=null` in the file, `env("EST_TIME", "fallback")` returns `null`.
+`env` checks own keys of the store (`Object.hasOwn`, not `??` or `in`), so `env("toString", "d")` returns `"d"`, and a deliberately-loaded `null` is preserved and distinguishable from a missing key: with `EST_TIME=null` in the file, `env("EST_TIME", "fallback")` returns `null`.
 
 A value that comes from the `process.env` step is coerced the same way a file value is (`"8080"` → `8080`, `"true"` → `true`, `"null"` → `null`) so a key's type does not depend on where it came from. That coercion is narrower than `parseValue`: no quote stripping, no `${VAR}` interpolation, and values with significant leading/trailing whitespace pass through untouched.
 
 Before 1.3.0 `env()` never consulted `process.env`, so a platform-injected variable that no `.env` file declared returned its default forever — including `env("NODE_ENV")` before `loadEnv()` had run at all.
 
-`env.all()` returns the loaded store only. It is deliberately NOT merged with `process.env`; use `env(key)` for the fallback.
+`env.all()` returns the loaded store only, and is `{}` after `resetEnv()`. It is deliberately NOT merged with `process.env`; use `env(key)` for the fallback.
 
 ## resetEnv()
 
@@ -188,23 +195,27 @@ Before 1.3.0 `env()` never consulted `process.env`, so a platform-injected varia
 function resetEnv(): void
 ```
 
-1. Clears every key from the internal store.
-2. Deletes every `process.env` key that `loadEnvFile` wrote since module load (tracked internally in a `Set`).
+1. Clears every key from the internal store. The store stays empty: the import-time snapshot is NOT copied into it, so `env("PORT")` falls through to `process.env` (coerced, e.g. `3000`) and `env.all()` is `{}`.
+2. Puts every `process.env` key the loader wrote back to the value it had just before the loader's first write, or deletes it if it was absent.
 3. Copies the initial `process.env` snapshot (captured at module import time) back onto `process.env`.
 
-The net effect is a true "back to t0" for anything the loader added. Keys that callers set directly on `process.env`, without going through `loadEnv` / `loadEnvFile`, are not tracked and survive the reset — the caller owns their own additions.
+A variable you set directly on `process.env` after import survives the reset, even if the loader later wrote the same key.
 
 ## File-format rules
 
-- `KEY=value` — type-coerced.
-- `KEY="value"` — string, even if it looks numeric.
-- `KEY="value with spaces"` — quotes preserve whitespace.
-- `KEY="value \"with\" escapes"` — `\"` becomes `"`.
-- `KEY=${OTHER}` — interpolation of an already-loaded key, or of a `process.env` key. Throws if neither has it.
-- `# comment line` — ignored.
-- Blank lines — ignored.
+- `KEY=value` — unquoted; type-coerced after the inline comment is removed and `${VAR}` is resolved.
+- `export KEY=value` — the `export ` prefix is removed. `KEY = value` — spaces around `=` are allowed.
+- `KEY=value # note` — an inline comment starts at the first `#` preceded by whitespace. `COLOR=#fff` and `URL=https://x.com/#frag` keep their `#`; the whitespace after `=` counts, so `KEY= # note` is `""`.
+- `KEY="value"` — string, even if it looks numeric. The closing quote is the FIRST unescaped `"`; anything after it (a `# comment`) is discarded.
+- `KEY="a\nb"` — double quotes expand `\n`, `\r`, `\t`, `\"`, `\\` and `\$` and interpolate, in one pass (`\${X}` stays `${X}`); any other backslash is kept.
+- `KEY='literal ${X}'` — single quotes are literal: no interpolation, only `\'` is unescaped.
+- ``KEY=`value` `` — backticks interpolate and unescape `` \` ``, `\$`, `\\`, but do not expand `\n`.
+- A quoted value with no closing quote on its line continues on the next lines (joined with `\n`) — PEM keys and certificates work. In a file, reaching the end without a closing quote throws `Unterminated "-quoted value for KEY starting at line N of PATH`.
+- `KEY=${OTHER}` — interpolation of a key from earlier in the file, the store, or `process.env`. Throws if none has it.
+- `# comment line`, blank lines, `JUST_A_KEY` (no `=`) and lines with an invalid key — ignored.
 - `KEY=` — yields `["KEY", ""]`.
-- `JUST_A_KEY` — ignored (no `=`).
+- A file is parsed completely before anything is written: if any line throws, the store and `process.env` are left untouched.
+- A leading UTF-8 BOM is ignored; `\n` and `\r\n` line endings both work.
 
 ## NODE_ENV semantics
 
@@ -229,6 +240,10 @@ loadEnv();
 process.env.NODE_ENV = "test";
 loadEnv();
 // Loads .env.shared first; .env.test does not exist, so falls back to .env.
+
+delete process.env.NODE_ENV;
+loadEnv();
+// Loads .env.shared first, then .env directly (no .env.undefined probe).
 ```
 
 ## Override semantics
@@ -268,11 +283,11 @@ Keys the file declares that the environment does NOT provide are loaded normally
 
 - **`env()` returns `any`** — no type-safe key narrowing.
 - **Forward references are unsupported.** `A=${B}` with `B` declared on a later line throws; declare `B` first (or in `.env.shared`, or in `process.env`).
-- **Numeric coercion requires an exact round trip** (since 1.3.1). Identifier-shaped values (`0123456789`, `0x1F`, `1e5`, `+1555…`, anything past `MAX_SAFE_INTEGER`) stay strings from both sources. Quoting still works in a `.env` file as an explicit opt-out.
+- **Numeric coercion requires an exact round trip within the safe-integer range.** Identifier-shaped values (`0123456789`, `0x1F`, `1e5`, `+1555…`, every integer past `MAX_SAFE_INTEGER`) stay strings from both sources. Quoting still works in a `.env` file as an explicit opt-out.
 - **`env.all()` returns the store by reference** — mutating the returned object mutates the store.
-- **The default `precedence` is `"file-wins"`**, which lets a baked-in `.env` file override platform-injected variables. Pass `"process-wins"` in containers. v2.0 flips the default.
+- **The default `precedence` is `"file-wins"`**, which lets a baked-in `.env` file override platform-injected variables. Pass `"process-wins"` in containers.
 
-The four defects documented in `src/__tests__/known-bugs.test.ts` (the `null` collapse, the quoted-`#`-with-comment mis-trim, the double `parseValue` call, and `resetEnv` leaving keys behind) were all fixed in 1.2.4; that file now pins the corrected behaviour. The four defects from the 2026-08-10 report are covered in `src/__tests__/process-env.test.ts`.
+The 2026-11-15 review findings (parsing of quotes, comments, `export`, multiline values, interpolation, atomic loads, `resetEnv`, option merging) are pinned in `src/__tests__/review-2026-11.test.ts`. The four defects documented in `src/__tests__/known-bugs.test.ts` (the `null` collapse, the quoted-`#`-with-comment mis-trim, the double `parseValue` call, and `resetEnv` leaving keys behind) were all fixed in 1.2.4; that file now pins the corrected behaviour. The four defects from the 2026-08-10 report are covered in `src/__tests__/process-env.test.ts`.
 
 ## Patterns
 

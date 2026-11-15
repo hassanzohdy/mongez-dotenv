@@ -17,5 +17,7 @@ Load Node.js environment configuration as typed values rather than strings. It r
 
 - Use `env()` for typed reads: `process.env` always stores strings.
 - In Docker, Kubernetes, or CI, select `precedence: "process-wins"` so injected values stay authoritative.
-- `${VAR}` references must already be loaded or present in `process.env`; forward references throw.
-- `resetEnv()` only reverts keys written by this loader; clean up direct `process.env` mutations yourself.
+- `${NAME}` references must already be loaded (earlier in the same file, or an earlier file) or present in `process.env`; forward references throw. Single-quoted values are never interpolated, and `${...}` that is not a valid name stays literal.
+- Unquoted values accept inline comments (`PORT=3000 # dev`); `COLOR=#fff` keeps its `#`. Quote the value when it needs ` #`.
+- Quoted values may span lines (PEM keys); an unterminated quote in a file throws and loads nothing from that file.
+- `resetEnv()` empties the store (`env.all()` is `{}`) and puts back every `process.env` key the loader wrote; keys you set directly on `process.env` after import survive.

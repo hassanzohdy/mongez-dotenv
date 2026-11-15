@@ -1,5 +1,46 @@
 # Changelog — @mongez/dotenv
 
+## [2.0.0] — Unreleased
+
+The `.env` grammar now follows `dotenv` / shell conventions, and the loader is atomic. Several lines that 1.x read differently now parse the way the docs always described. Check the **Breaking** list against your files before upgrading. `precedence` still defaults to `"file-wins"`.
+
+### Breaking
+
+- **Single-quoted values are literal.** `GREETING='Hello ${name}'` is the text `Hello ${name}`. 1.x interpolated it, and threw when `name` was undefined. Only `\'` is unescaped inside single quotes.
+- **Double-quoted values expand escapes:** `\n`, `\r`, `\t`, `\"`, `\\` and `\$`. A Windows path like `"C:\new"` now contains a newline. Write `"C:\\new"` or use single quotes. Backtick values expand `` \` ``, `\\` and `\$` (not `\n` / `\r` / `\t`); a backslash before any other character is kept as written.
+- **Inline comments after unquoted values are removed** ([#1](https://github.com/hassanzohdy/mongez-dotenv/issues/1)). `DEBUG=true # debug mode` is now the boolean `true`, and `APP_PORT=3000 # http port` is the number `3000`. 1.x returned the strings with the comment included. A comment starts at the first `#` preceded by whitespace, so `COLOR=#fff` and `URL=https://x.com/#frag` keep their `#`. The whitespace after the `=` counts: `KEY= # note` is the empty string.
+- **`${...}` that is not a valid name stays literal.** `${not a name}` used to throw. A valid `${NAME}` that resolves nowhere still throws.
+- **An unterminated quote in a file throws**, naming the key, line and file. A quoted value with no closing quote on its line now continues onto the next lines, which makes multiline values such as PEM keys work. `parseLine` / `parseValue` still return the raw text.
+- **`resetEnv()` leaves the store empty.** 1.x copied the whole import-time `process.env` into it as raw strings. `env.all()` is now `{}` after a reset, and `env("PORT")` comes from `process.env` with coercion (`3000`, not `"3000"`).
+- **Every integer beyond `Number.MAX_SAFE_INTEGER` stays a string**, including ones that round-trip, such as `1234567890123456000`.
+- **The closing quote is the first unescaped quote**, not the last one on the line. `APP_NAME="Mongez""` gives `Mongez`. 1.x gave `Mongez"`.
+
+### Fixed
+
+- **`export` and spacing:** an `export ` prefix is removed. Keys are trimmed, so `APP_PORT = 3000` defines `APP_PORT`, not `"APP_PORT "`. Lines whose key is not a valid name are skipped instead of being written to `process.env`.
+- **Trailing comments:** a comment that contains the value's quote character no longer corrupts the value. For example, `A='x' # don't change` gives `x`.
+- **Interpolation:**
+  - Comments are never interpolated.
+  - `\$` / `\${X}` give a literal `$` / `${X}`.
+  - The `${NAME}` match stops at the first `}`, so `CFG={"host":"${HOST}"}` works.
+  - Substituted text can no longer turn into quote or comment syntax.
+- **`process-wins`:** a line for a process-provided key is no longer parsed, so an unresolvable `${VAR}` on it cannot throw at boot.
+- **Atomic loads:** a file is parsed completely before anything is written. A line that throws leaves the store and `process.env` untouched.
+- **Options passed as `undefined`** now use their defaults. `loadEnv(undefined, { dir: process.env.CONFIG_DIR })` with the variable unset used to throw a `TypeError`, and `override: undefined` used to turn writes off. `dir: ""` also means `cwd()` (1.x probed `/.env.shared` at the filesystem root for it).
+- **`resetEnv()` and your own variables:** a variable you set directly on `process.env` survives a reset even when the loader also wrote it. Each key goes back to the value it had before the loader's first write.
+- **`Object.prototype` keys:** `env("toString", "d")` returns `"d"`, and `${constructor}` is an unresolved reference. Both used to read `Object.prototype` through `in`.
+- **Working directory and `NODE_ENV`:** `cwd()` is read on every `loadEnv` call, so `process.chdir()` is respected. With `NODE_ENV` unset or empty the loader goes straight to `.env` and no longer probes `.env.undefined`.
+- **BOM:** a leading UTF-8 BOM no longer hides the first key.
+- **Docs:** the absolute-path wording now matches the code. Absolute paths are accepted unless they contain a `..` segment, and relative `../config` is rejected too.
+
+### Tests
+
+- `src/__tests__/review-2026-11.test.ts` adds one block per fix, plus the exact repro from issue #1.
+
+### Changed (development only)
+
+- Tooling moved to pnpm, TypeScript 7, Vite 8 and Vitest 5, with CI on Node 22 and 24. The published runtime code is unaffected by this.
+
 ## [1.3.3] — 2026-09-25
 
 ### Changed

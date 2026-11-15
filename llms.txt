@@ -27,12 +27,13 @@ Every export ships from the package root. No subpath entries.
 
 1. Call `loadEnv()` once at process startup. Idempotent — subsequent calls merge. If no `.env` file exists on the derived path, it is a no-op, not an error.
 2. `env("KEY")` reads the TYPED value (number/boolean/string/null). Lookup order is loaded store → `process.env` → `defaultValue`. `process.env.KEY` returns the string-coerced form.
-3. `${VAR}` is resolved at parse time, from the loaded store then `process.env`. A reference that resolves in neither place THROWS, naming the key. Forward references (declared later in the same file) are unsupported.
-4. `env(key)` preserves a deliberately-loaded `null` (it uses `key in envData`, not `??`), so `EST_TIME=null` reads back as `null` rather than the default.
+3. `${VAR}` is resolved at parse time: earlier lines of the same file, then the loaded store, then `process.env`. A valid reference that resolves nowhere THROWS, naming the key. Forward references are unsupported. Single-quoted values and comments are never interpolated; `\$` is a literal `$`; `${not a name}` stays literal.
+4. `env(key)` preserves a deliberately-loaded `null` (it checks own keys of the store, not `??`), so `EST_TIME=null` reads back as `null` rather than the default.
 5. `.env.shared` loads first; `.env.${NODE_ENV}` (or `.env`) loads second and overwrites shared keys when `override` is `true`.
-6. `precedence` decides who wins when a key is in BOTH the file and the real environment. Default `"file-wins"` — the `.env` file overwrites platform-injected values, which is the wrong default for containers. Pass `"process-wins"` in Docker / Kubernetes / CI. **v2.0 flips the default.**
-7. `env.all()` returns the loaded store only. It is not merged with `process.env`.
-8. Numeric coercion requires an EXACT round trip (`Number.isFinite(n) && String(n) === value`). `0123456789`, `0x1F`, `1e5`, `+15551234567`, `1.50`, `Infinity`, `NaN` and anything past `MAX_SAFE_INTEGER` all stay strings — from a `.env` file and from `process.env` alike.
+6. `precedence` decides who wins when a key is in BOTH the file and the real environment. Default `"file-wins"` — the `.env` file overwrites platform-injected values, which is the wrong default for containers. Pass `"process-wins"` in Docker / Kubernetes / CI. Under `"process-wins"` a process-provided key's file line is not parsed at all.
+7. `env.all()` returns the loaded store only (`{}` after `resetEnv()`). It is not merged with `process.env`.
+8. Numeric coercion requires an EXACT round trip within the safe-integer range (`Number.isFinite(n) && String(n) === value && Math.abs(n) <= Number.MAX_SAFE_INTEGER`). `0123456789`, `0x1F`, `1e5`, `+15551234567`, `1.50`, `Infinity`, `NaN` and anything past `MAX_SAFE_INTEGER` all stay strings — from a `.env` file and from `process.env` alike.
+9. dotenv-style lines: `export KEY=v`, `KEY = v`, inline `# comments` after unquoted values (a `#` not preceded by whitespace is data), first unescaped closing quote, `\n` expansion in double quotes, multiline quoted values (unterminated quote in a file throws with the line number). A file loads atomically: a throwing line leaves nothing applied. A leading BOM is ignored. `parseLine` / `parseValue` never throw on an unterminated quote (they return the raw text).
 
 ## Optional
 
