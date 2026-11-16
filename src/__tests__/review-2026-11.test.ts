@@ -6,8 +6,10 @@
  * File-based cases use fixtures named `.env.cN-…` so the scenario is readable
  * next to the assertion.
  */
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   env,
   loadEnv,
@@ -446,6 +448,24 @@ describe("C13 resetEnv() keeps variables the caller set directly", () => {
 });
 
 describe("C14 loadEnv() resolves its inputs per call", () => {
+  // Built at run time, not committed: Windows cannot check out a file named
+  // `.env.` (a trailing dot), which failed the Windows CI checkout. There the
+  // name resolves to `.env`, so the probe it guards against reads `.env` anyway.
+  let emptyNodeEnvDir = "";
+
+  beforeAll(() => {
+    emptyNodeEnvDir = fs.mkdtempSync(path.join(os.tmpdir(), "dotenv-c14-"));
+    fs.writeFileSync(path.join(emptyNodeEnvDir, ".env.undefined"), "C14_SOURCE=dot-env-undefined\n");
+    if (process.platform !== "win32") {
+      fs.writeFileSync(path.join(emptyNodeEnvDir, ".env."), "C14_SOURCE=dot-env-empty-suffix\n");
+    }
+    fs.writeFileSync(path.join(emptyNodeEnvDir, ".env"), "C14_SOURCE=dot-env\n");
+  });
+
+  afterAll(() => {
+    fs.rmSync(emptyNodeEnvDir, { recursive: true, force: true });
+  });
+
   it("reads cwd() on every call, not once at import", () => {
     delete process.env.NODE_ENV;
     process.chdir(FIXTURES);
@@ -459,7 +479,7 @@ describe("C14 loadEnv() resolves its inputs per call", () => {
     process.env.NODE_ENV = "";
 
     loadEnv(undefined, {
-      dir: path.join(FIXTURES, "empty-node-env"),
+      dir: emptyNodeEnvDir,
       override: false,
       loadSharedEnv: false,
     });
@@ -472,7 +492,7 @@ describe("C14 loadEnv() resolves its inputs per call", () => {
     delete process.env.NODE_ENV;
 
     loadEnv(undefined, {
-      dir: path.join(FIXTURES, "empty-node-env"),
+      dir: emptyNodeEnvDir,
       override: false,
       loadSharedEnv: false,
     });
