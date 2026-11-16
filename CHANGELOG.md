@@ -1,6 +1,6 @@
 # Changelog — @mongez/dotenv
 
-## [2.0.0] — Unreleased
+## [2.0.0] — 2026-11-16
 
 The `.env` grammar now follows `dotenv` / shell conventions, and the loader is atomic. Several lines that 1.x read differently now parse the way the docs always described. Check the **Breaking** list against your files before upgrading, starting with the new default `precedence`.
 
